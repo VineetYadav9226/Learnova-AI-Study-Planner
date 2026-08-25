@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   FiFolder,
   FiFileText,
@@ -16,38 +16,56 @@ import {
   FiBookOpen,
 } from "react-icons/fi";
 
-const STORAGE_KEY = "learnova_resources";
+// =====================================================
+// USER-SPECIFIC RESOURCE STORAGE
+// =====================================================
 
-const DEFAULT_RESOURCES = [
-  {
-    id: "default-1",
-    title: "Python Documentation",
-    description:
-      "Official Python documentation for learning Python concepts.",
-    type: "Website",
-    url: "https://docs.python.org/3/",
-    subject: "Python",
-    favorite: false,
-    note: "",
-    fileName: "",
-    fileUrl: "",
-    lastOpened: null,
-  },
-  {
-    id: "default-2",
-    title: "MDN Web Docs",
-    description:
-      "HTML, CSS and JavaScript learning resources.",
-    type: "Website",
-    url: "https://developer.mozilla.org/",
-    subject: "Web Development",
-    favorite: false,
-    note: "",
-    fileName: "",
-    fileUrl: "",
-    lastOpened: null,
-  },
-];
+const getCurrentUser = () => {
+  const possibleKeys = [
+    "user",
+    "currentUser",
+    "learnova_user",
+    "authUser",
+    "loggedInUser",
+    "userData",
+  ];
+
+  for (const key of possibleKeys) {
+    try {
+      const value = localStorage.getItem(key);
+      if (!value) continue;
+
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object") {
+        return parsed;
+      }
+    } catch {
+      // Ignore invalid user data.
+    }
+  }
+
+  return null;
+};
+
+const getUserIdentifier = () => {
+  const user = getCurrentUser();
+  if (!user) return null;
+
+  const identifier =
+    user._id ||
+    user.id ||
+    user.userId ||
+    user.email;
+
+  return identifier ? String(identifier) : null;
+};
+
+const getResourceStorageKey = (userId) =>
+  userId
+    ? `learnova_resources_${userId}`
+    : "learnova_resources";
+
+const DEFAULT_RESOURCES = [];
 
 function Resources() {
 
@@ -55,9 +73,14 @@ function Resources() {
   // LOAD RESOURCES
   // =====================================================
 
-  const [resources, setResources] = useState(() => {
+  const [userKey, setUserKey] = useState(() =>
+    getUserIdentifier()
+  );
+
+  const loadResourcesForUser = (currentUserKey) => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const key = getResourceStorageKey(currentUserKey);
+      const saved = localStorage.getItem(key);
 
       if (saved) {
         const parsed = JSON.parse(saved);
@@ -73,12 +96,40 @@ function Resources() {
           }));
         }
       }
+
+      // Migrate legacy resources once for the currently logged-in user.
+      if (currentUserKey) {
+        const legacy = localStorage.getItem("learnova_resources");
+        if (legacy) {
+          const parsedLegacy = JSON.parse(legacy);
+          if (Array.isArray(parsedLegacy)) {
+            const normalized = parsedLegacy.map((item) => ({
+              ...item,
+              favorite: Boolean(item.favorite),
+              note: item.note || "",
+              fileName: item.fileName || "",
+              fileUrl: item.fileUrl || "",
+              lastOpened: item.lastOpened || null,
+            }));
+
+            localStorage.setItem(
+              key,
+              JSON.stringify(normalized)
+            );
+            return normalized;
+          }
+        }
+      }
     } catch (error) {
       console.error("Resource loading error:", error);
     }
 
     return DEFAULT_RESOURCES;
-  });
+  };
+
+  const [resources, setResources] = useState(() =>
+    loadResourcesForUser(getUserIdentifier())
+  );
 
   // =====================================================
   // STATES
@@ -118,13 +169,67 @@ function Resources() {
 
     try {
       localStorage.setItem(
-        STORAGE_KEY,
+        getResourceStorageKey(userKey),
         JSON.stringify(updatedResources)
+      );
+
+      window.dispatchEvent(
+        new Event("learnova:resources-updated")
       );
     } catch (error) {
       console.error("Resource saving error:", error);
     }
   };
+
+  // =====================================================
+  // SYNC AFTER SUBJECT DELETE / USER CHANGE
+  // =====================================================
+
+  useEffect(() => {
+    const refreshResources = () => {
+      const nextUserKey = getUserIdentifier();
+      setUserKey(nextUserKey);
+      setResources(
+        loadResourcesForUser(nextUserKey)
+      );
+    };
+
+    window.addEventListener(
+      "learnova:resources-updated",
+      refreshResources
+    );
+    window.addEventListener(
+      "learnova:user-updated",
+      refreshResources
+    );
+    window.addEventListener(
+      "learnova:auth-changed",
+      refreshResources
+    );
+    window.addEventListener(
+      "storage",
+      refreshResources
+    );
+
+    return () => {
+      window.removeEventListener(
+        "learnova:resources-updated",
+        refreshResources
+      );
+      window.removeEventListener(
+        "learnova:user-updated",
+        refreshResources
+      );
+      window.removeEventListener(
+        "learnova:auth-changed",
+        refreshResources
+      );
+      window.removeEventListener(
+        "storage",
+        refreshResources
+      );
+    };
+  }, []);
 
   // =====================================================
   // SUBJECTS
@@ -876,43 +981,73 @@ function Resources() {
             RESOURCE GRID
         ================================================= */}
 
-        <div className="resource-grid">
+        {filteredResources.length === 0 ? (
 
-          {filteredResources.length === 0 ? (
+          <div className="empty-resources">
+            <FiFolder
+              size={55}
+              className="empty-icon"
+            />
 
-            <div className="empty-resources">
-              <FiFolder
-                size={55}
-                className="empty-icon"
-              />
+            <h2>
+              No resources found
+            </h2>
 
-              <h2>
-                No resources found
-              </h2>
+            <p>
+              Try another search or add a
+              new study resource.
+            </p>
 
-              <p>
-                Try another search or add a
-                new study resource.
-              </p>
+            <button
+              className="empty-add-btn"
+              onClick={openAddModal}
+            >
+              <FiPlus />
+              Add Resource
+            </button>
+          </div>
 
-              <button
-                className="empty-add-btn"
-                onClick={openAddModal}
+        ) : (
+
+          <div className="subject-resource-sections">
+            {Object.entries(
+              filteredResources.reduce((groups, resource) => {
+                const subject =
+                  String(resource.subject || "General").trim() ||
+                  "General";
+
+                if (!groups[subject]) {
+                  groups[subject] = [];
+                }
+
+                groups[subject].push(resource);
+                return groups;
+              }, {})
+            ).map(([subject, subjectResources]) => (
+              <section
+                className="resource-subject-section"
+                key={subject}
               >
-                <FiPlus />
-                Add Resource
-              </button>
-            </div>
+                <div className="resource-subject-heading">
+                  <div>
+                    <h2>📚 {subject}</h2>
+                    <p>
+                      {subjectResources.length} resource
+                      {subjectResources.length !== 1 ? "s" : ""}
+                    </p>
+                  </div>
 
-          ) : (
+                  <span className="resource-subject-count">
+                    {subjectResources.length}
+                  </span>
+                </div>
 
-            filteredResources.map(
-              (resource) => (
-
-                <div
-                  className="resource-card"
-                  key={resource.id}
-                >
+                <div className="resource-grid">
+                  {subjectResources.map((resource) => (
+                    <div
+                      className="resource-card"
+                      key={resource.id}
+                    >
 
                   {/* CARD TOP */}
 
@@ -1009,6 +1144,19 @@ function Resources() {
                       <strong>{resource.type}</strong>
                     </span>
 
+                    {resource.platform && (
+                      <span>
+                        Source:
+                        <strong>{resource.platform}</strong>
+                      </span>
+                    )}
+
+                    {resource.aiGenerated && (
+                      <span>
+                        🤖 AI Recommended
+                      </span>
+                    )}
+
                     {resource.lastOpened && (
                       <span>
                         Recently opened
@@ -1081,12 +1229,13 @@ function Resources() {
 
                   </div>
 
+                    </div>
+                  ))}
                 </div>
-              )
-            )
-          )}
-
-        </div>
+              </section>
+            ))}
+          </div>
+        )}
 
       </div>
 

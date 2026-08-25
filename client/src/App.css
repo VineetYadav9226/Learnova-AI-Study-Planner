@@ -11941,3 +11941,583 @@ html.dark-mode .dashboard
     font-size: 14px !important;
   }
 }
+
+
+
+
+
+/* =========================================
+   AUTH PAGE - SWITCH BUTTON
+   ========================================= */
+
+.auth-switch {
+  margin-top: 28px;
+  text-align: center;
+  color: #64748b;
+  font-size: 15px;
+}
+
+.auth-switch button {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #4f46e5;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 0;
+  margin-left: 5px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.auth-switch button:hover {
+  color: #4338ca;
+  text-decoration: underline;
+}
+
+
+/* =========================================
+   REMOVE DEFAULT BUTTON APPEARANCE
+   ========================================= */
+
+.auth-switch button:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+
+/* =========================================
+   INPUT AUTOFILL FIX
+   Chrome automatically blue background
+   laga raha hai login fields par.
+   ========================================= */
+
+.auth-form input:-webkit-autofill,
+.auth-form input:-webkit-autofill:hover,
+.auth-form input:-webkit-autofill:focus,
+.auth-form input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  -webkit-text-fill-color: #13213f !important;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+
+/* =========================================
+   AUTH INPUT
+   ========================================= */
+
+.auth-form input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 15px 16px;
+  border: 1px solid #dbe1ef;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #13213f;
+  font-size: 16px;
+  font-family: inherit;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.auth-form input:focus {
+  border-color: #635bff;
+  box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.12);
+}
+
+
+/* =========================================
+   AUTH PRIMARY BUTTON
+   ========================================= */
+
+.auth-form button[type="submit"] {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  padding: 15px 20px;
+  background: #6355f5;
+  color: white;
+  font-size: 18px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.auth-form button[type="submit"]:hover {
+  background: #5548e8;
+  transform: translateY(-1px);
+}
+
+.auth-form button[type="submit"]:active {
+  transform: translateY(0);
+}
+
+
+
+/* ================================================================
+   TASK MODAL — FINAL FORM FIX
+   Learnova AI
+================================================================ */
+
+.page-content:has(.tasks-page) .task-modal {
+  width: min(560px, calc(100vw - 32px)) !important;
+  max-width: 560px !important;
+
+  padding: 30px !important;
+
+  border-radius: 20px !important;
+  box-sizing: border-box !important;
+
+  background: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+
+  box-shadow:
+    0 25px 70px rgba(15, 23, 42, 0.22) !important;
+}
+
+
+/* ---------- Modal Header ---------- */
+
+.page-content:has(.tasks-page) .task-modal-header {
+  width: 100% !important;
+
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+
+  gap: 20px !important;
+  margin-bottom: 24px !important;
+}
+
+.page-content:has(.tasks-page) .task-modal-header h2 {
+  margin: 0 !important;
+
+  color: #172033 !important;
+
+  font-size: 24px !important;
+  line-height: 1.25 !important;
+  font-weight: 750 !important;
+}
+
+
+/* ---------- Modal Form ---------- */
+
+.page-content:has(.tasks-page) .task-modal form {
+  width: 100% !important;
+
+  display: flex !important;
+  flex-direction: column !important;
+
+  gap: 0 !important;
+}
+
+
+/* ---------- Every Form Row ---------- */
+
+.page-content:has(.tasks-page) .task-modal form > div {
+  width: 100% !important;
+
+  display: flex !important;
+  flex-direction: column !important;
+
+  gap: 7px !important;
+
+  margin-bottom: 17px !important;
+}
+
+
+/* ---------- Labels ---------- */
+
+.page-content:has(.tasks-page) .task-modal label {
+  display: block !important;
+
+  width: 100% !important;
+
+  margin: 0 !important;
+
+  color: #172033 !important;
+
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+  font-weight: 650 !important;
+}
+
+
+/* ---------- Inputs + Select ---------- */
+
+.page-content:has(.tasks-page) .task-modal input,
+.page-content:has(.tasks-page) .task-modal select {
+  display: block !important;
+
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 46px !important;
+
+  padding: 0 13px !important;
+
+  box-sizing: border-box !important;
+
+  border: 1px solid #dfe3eb !important;
+  border-radius: 10px !important;
+
+  outline: none !important;
+
+  background: #ffffff !important;
+  color: #172033 !important;
+
+  font-size: 14px !important;
+  line-height: 46px !important;
+
+  appearance: auto !important;
+}
+
+
+/* ---------- Input Focus ---------- */
+
+.page-content:has(.tasks-page) .task-modal input:focus,
+.page-content:has(.tasks-page) .task-modal select:focus {
+  border-color: #6657f5 !important;
+
+  box-shadow:
+    0 0 0 3px rgba(102, 87, 245, 0.10) !important;
+}
+
+
+/* ---------- Placeholder ---------- */
+
+.page-content:has(.tasks-page) .task-modal input::placeholder {
+  color: #94a3b8 !important;
+  opacity: 1 !important;
+}
+
+
+/* ---------- Modal Buttons ---------- */
+
+.page-content:has(.tasks-page) .task-modal-actions {
+  width: 100% !important;
+
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+
+  gap: 10px !important;
+
+  margin-top: 8px !important;
+  padding-top: 4px !important;
+}
+
+
+/* ---------- Cancel ---------- */
+
+.page-content:has(.tasks-page) .task-cancel-btn {
+  min-height: 42px !important;
+
+  padding: 0 17px !important;
+
+  border: 1px solid #dfe3eb !important;
+  border-radius: 10px !important;
+
+  background: #ffffff !important;
+  color: #64748b !important;
+
+  font-size: 13px !important;
+  font-weight: 650 !important;
+}
+
+.page-content:has(.tasks-page) .task-cancel-btn:hover {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+}
+
+
+/* ---------- Create Task ---------- */
+
+.page-content:has(.tasks-page) .task-save-btn {
+  min-height: 42px !important;
+
+  padding: 0 18px !important;
+
+  border: 0 !important;
+  border-radius: 10px !important;
+
+  background: #6657f5 !important;
+  color: #ffffff !important;
+
+  font-size: 13px !important;
+  font-weight: 650 !important;
+
+  box-shadow:
+    0 8px 20px rgba(102, 87, 245, 0.18) !important;
+
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease !important;
+}
+
+.page-content:has(.tasks-page) .task-save-btn:hover {
+  background: #5543df !important;
+
+  transform: translateY(-1px) !important;
+
+  box-shadow:
+    0 10px 24px rgba(102, 87, 245, 0.25) !important;
+}
+
+
+/* ---------- Close Button ---------- */
+
+.page-content:has(.tasks-page) .task-modal-close {
+  flex: 0 0 36px !important;
+
+  width: 36px !important;
+  height: 36px !important;
+
+  border: 0 !important;
+  border-radius: 9px !important;
+
+  background: #f8fafc !important;
+  color: #64748b !important;
+}
+
+.page-content:has(.tasks-page) .task-modal-close:hover {
+  background: #f0edff !important;
+  color: #6657f5 !important;
+}
+
+
+/* ================================================================
+   TASK MODAL — MOBILE
+================================================================ */
+
+@media (max-width: 600px) {
+
+  .page-content:has(.tasks-page) .task-modal-overlay {
+    padding: 12px !important;
+  }
+
+  .page-content:has(.tasks-page) .task-modal {
+    width: 100% !important;
+    max-width: 100% !important;
+
+    padding: 22px !important;
+
+    border-radius: 16px !important;
+  }
+
+  .page-content:has(.tasks-page) .task-modal-header h2 {
+    font-size: 21px !important;
+  }
+
+  .page-content:has(.tasks-page) .task-modal-actions {
+    flex-direction: column-reverse !important;
+  }
+
+  .page-content:has(.tasks-page) .task-modal-actions button {
+    width: 100% !important;
+  }
+}
+
+
+/* ================================================================
+   TASK MODAL — DARK MODE
+================================================================ */
+
+html.dark-mode .page-content:has(.tasks-page) .task-modal {
+  background: #171827 !important;
+
+  border-color: #2c3148 !important;
+
+  color: #eef2ff !important;
+}
+
+html.dark-mode .page-content:has(.tasks-page) .task-modal-header h2,
+html.dark-mode .page-content:has(.tasks-page) .task-modal label {
+  color: #f8fafc !important;
+}
+
+html.dark-mode .page-content:has(.tasks-page) .task-modal input,
+html.dark-mode .page-content:has(.tasks-page) .task-modal select {
+  background: #101322 !important;
+
+  border-color: #2c3148 !important;
+
+  color: #eef2ff !important;
+}
+
+html.dark-mode .page-content:has(.tasks-page) .task-modal input::placeholder {
+  color: #737b9f !important;
+}
+
+html.dark-mode .page-content:has(.tasks-page) .task-cancel-btn {
+  background: #101322 !important;
+
+  border-color: #2c3148 !important;
+
+  color: #aab6d0 !important;
+}
+
+html.dark-mode .page-content:has(.tasks-page) .task-modal-close {
+  background: #101322 !important;
+
+  color: #aab6d0 !important;
+}
+
+
+
+
+
+
+/* ================================================================
+   LEARNOVA AI — QUIZ + ANALYTICS PAGE FINAL FIX
+================================================================ */
+
+/* ---------- Quizzes page ---------- */
+
+.app-layout > .page-content > .quizzes-page {
+  position: relative !important;
+
+  width: 100% !important;
+  min-width: 0 !important;
+
+  margin: 0 !important;
+
+  padding: 42px 42px 70px !important;
+
+  box-sizing: border-box !important;
+
+  overflow-x: hidden !important;
+}
+
+
+/* Quiz page main heading must stay below navbar */
+
+.app-layout > .page-content > .quizzes-page > *:first-child {
+  margin-top: 0 !important;
+}
+
+
+/* Prevent quiz heading from going behind navbar */
+
+.quizzes-page h1:first-child,
+.quizzes-page .page-heading:first-child,
+.quizzes-page .quiz-header:first-child {
+  position: relative !important;
+
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+
+  transform: none !important;
+}
+
+
+/* ---------- Quiz cards ---------- */
+
+.quizzes-page .quiz-create-card,
+.quizzes-page .quiz-results-card,
+.quizzes-page .active-quiz-card,
+.quizzes-page .quiz-complete-card,
+.quizzes-page .quiz-card {
+  width: 100% !important;
+  max-width: none !important;
+
+  box-sizing: border-box !important;
+
+  border-radius: 20px !important;
+
+  background: #ffffff !important;
+  border: 1px solid #e4e7ef !important;
+
+  box-shadow: 0 8px 28px rgba(20, 30, 60, 0.05) !important;
+}
+
+
+/* Quiz form */
+
+.quizzes-page input,
+.quizzes-page select,
+.quizzes-page textarea {
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+}
+
+
+/* ---------- Analytics ---------- */
+
+.app-layout > .page-content > .analytics-page {
+  position: relative !important;
+
+  width: 100% !important;
+  min-width: 0 !important;
+
+  margin: 0 !important;
+
+  padding: 42px 42px 70px !important;
+
+  box-sizing: border-box !important;
+
+  overflow-x: hidden !important;
+}
+
+
+/* Analytics cards */
+
+.analytics-page .analytics-card,
+.analytics-page .analytics-panel {
+  box-sizing: border-box !important;
+  width: 100% !important;
+
+  border-radius: 20px !important;
+}
+
+
+/* Empty analytics states */
+
+.analytics-page .empty-state,
+.analytics-page .analytics-empty,
+.analytics-page [class*="empty"] {
+  box-sizing: border-box !important;
+}
+
+
+/* ================================================================
+   DARK MODE
+================================================================ */
+
+html.dark-mode .quizzes-page .quiz-create-card,
+html.dark-mode .quizzes-page .quiz-results-card,
+html.dark-mode .quizzes-page .active-quiz-card,
+html.dark-mode .quizzes-page .quiz-complete-card,
+html.dark-mode .quizzes-page .quiz-card {
+  background: #171827 !important;
+
+  border-color: #2c3148 !important;
+
+  color: #eef2ff !important;
+}
+
+
+/* ================================================================
+   RESPONSIVE
+================================================================ */
+
+@media (max-width: 900px) {
+
+  .app-layout > .page-content > .quizzes-page,
+  .app-layout > .page-content > .analytics-page {
+    padding: 32px 24px 60px !important;
+  }
+}
+
+
+@media (max-width: 600px) {
+
+  .app-layout > .page-content > .quizzes-page,
+  .app-layout > .page-content > .analytics-page {
+    padding: 25px 14px 50px !important;
+  }
+}
+
+
+

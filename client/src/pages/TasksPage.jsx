@@ -3,11 +3,7 @@
 // TASKS PAGE
 // =====================================================
 //
-// IMPORTANT:
-// Navbar + Sidebar yahan render NAHI honge.
-//
-// Global ProtectedLayout already provides:
-// Navbar + Sidebar + page-content.
+// Navbar + Sidebar are provided by ProtectedLayout.
 //
 // Features:
 // - Load tasks from MongoDB
@@ -17,10 +13,16 @@
 // - Complete / incomplete
 // - Search
 // - Status filter
-// - Subject filter
+// - CURRENT subject filter
 // - Progress statistics
-// - Dashboard synchronization
 //
+// IMPORTANT:
+// Subjects are read ONLY from the current user key:
+// localStorage -> "learnova_subjects_<USER_ID>"
+//
+// Old task subjects are NOT added to the filter.
+// When editing an old task, its old subject is temporarily
+// shown only inside the edit modal so existing data is safe.
 // =====================================================
 
 import {
@@ -51,33 +53,169 @@ import {
 
 
 // =====================================================
-// DEFAULT SUBJECTS
-// =====================================================
-
-const DEFAULT_SUBJECTS = [
-  "Python",
-  "AIML",
-  "AI",
-  "CN",
-  "Data Structure",
-  "Software Project Management",
-  "Cloud Computing",
-  "SPM",
-  "DBMS",
-  "DSA",
-  "OS",
-];
-
-
-// =====================================================
 // EMPTY FORM
 // =====================================================
 
 const EMPTY_FORM = {
   title: "",
-  subject: "Python",
+  subject: "",
   time: "",
 };
+
+
+// =====================================================
+// CURRENT USER STORAGE HELPERS
+// =====================================================
+//
+// Subjects are stored per logged-in user:
+// learnova_subjects_<USER_ID>
+//
+// IMPORTANT:
+// We NEVER read the old global key:
+// learnova_subjects
+// =====================================================
+
+const getCurrentUser = () => {
+  const possibleKeys = [
+    "user",
+    "currentUser",
+    "learnova_user",
+    "authUser",
+    "loggedInUser",
+    "userData",
+  ];
+
+  for (const key of possibleKeys) {
+    try {
+      const value =
+        localStorage.getItem(key);
+
+      if (!value) {
+        continue;
+      }
+
+      const parsed =
+        JSON.parse(value);
+
+      if (
+        parsed &&
+        typeof parsed === "object"
+      ) {
+        return parsed;
+      }
+    } catch {
+      // Ignore invalid JSON.
+    }
+  }
+
+  return null;
+};
+
+
+// =====================================================
+// GET CURRENT USER ID
+// =====================================================
+
+const getUserIdentifier = () => {
+  const user =
+    getCurrentUser();
+
+  if (!user) {
+    return null;
+  }
+
+  const identifier =
+    user._id ||
+    user.id ||
+    user.userId ||
+    user.email;
+
+  if (!identifier) {
+    return null;
+  }
+
+  return String(identifier);
+};
+
+
+// =====================================================
+// GET USER-SPECIFIC SUBJECT STORAGE KEY
+// =====================================================
+
+const getSubjectStorageKey = () => {
+  const userId =
+    getUserIdentifier();
+
+  if (!userId) {
+    return null;
+  }
+
+  return `learnova_subjects_${userId}`;
+};
+
+
+// =====================================================
+// GET CURRENT USER SUBJECTS
+// =====================================================
+
+function getCurrentSubjects() {
+  try {
+    const storageKey =
+      getSubjectStorageKey();
+
+    // No authenticated user:
+    // never fall back to another user's/global data.
+    if (!storageKey) {
+      return [];
+    }
+
+    const saved =
+      localStorage.getItem(
+        storageKey
+      );
+
+    if (!saved) {
+      return [];
+    }
+
+    const parsed =
+      JSON.parse(saved);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    const names =
+      parsed
+        .map((subject) =>
+          String(
+            subject?.name || ""
+          ).trim()
+        )
+        .filter(Boolean);
+
+    // Remove duplicates without
+    // changing the original display name.
+    return names.filter(
+      (name, index, array) =>
+        index ===
+        array.findIndex(
+          (item) =>
+            item.toLowerCase() ===
+            name.toLowerCase()
+        )
+    );
+
+  } catch (err) {
+
+    console.error(
+      "Unable to read current user subjects:",
+      err
+    );
+
+    return [];
+  }
+}
 
 
 // =====================================================
@@ -90,7 +228,8 @@ function TasksPage() {
   // TASK STATE
   // ===================================================
 
-  const [tasks, setTasks] = useState([]);
+  const [tasks, setTasks] =
+    useState([]);
 
   const [loading, setLoading] =
     useState(true);
@@ -100,6 +239,16 @@ function TasksPage() {
 
   const [error, setError] =
     useState("");
+
+
+  // ===================================================
+  // CURRENT SUBJECT STATE
+  // ===================================================
+
+  const [currentSubjects, setCurrentSubjects] =
+    useState(() =>
+      getCurrentSubjects()
+    );
 
 
   // ===================================================
@@ -130,6 +279,93 @@ function TasksPage() {
     useState({
       ...EMPTY_FORM,
     });
+
+
+  // ===================================================
+  // LOAD CURRENT SUBJECTS
+  // ===================================================
+  //
+  // Subjects.jsx stores the current subject list in
+  // localStorage. This event keeps TasksPage updated
+  // immediately after adding/editing/deleting a subject.
+  // ===================================================
+
+  useEffect(() => {
+
+    const syncSubjects = () => {
+
+      setCurrentSubjects(
+        getCurrentSubjects()
+      );
+
+      // If a previous user's subject was selected,
+      // reset the filter when the new user's subjects
+      // do not contain it.
+      setSubjectFilter((currentFilter) => {
+        if (currentFilter === "all") {
+          return currentFilter;
+        }
+
+        const latestSubjects =
+          getCurrentSubjects();
+
+        const exists =
+          latestSubjects.some(
+            (subject) =>
+              subject.toLowerCase() ===
+              currentFilter.toLowerCase()
+          );
+
+        return exists
+          ? currentFilter
+          : "all";
+      });
+
+    };
+
+
+    // Initial sync after page is mounted.
+    const timerId =
+      window.setTimeout(
+        syncSubjects,
+        0
+      );
+
+
+    // Custom event from Subjects page.
+    window.addEventListener(
+      "learnova:subjects-updated",
+      syncSubjects
+    );
+
+
+    // Storage event works when another browser tab
+    // changes the subject list.
+    window.addEventListener(
+      "storage",
+      syncSubjects
+    );
+
+
+    return () => {
+
+      window.clearTimeout(
+        timerId
+      );
+
+      window.removeEventListener(
+        "learnova:subjects-updated",
+        syncSubjects
+      );
+
+      window.removeEventListener(
+        "storage",
+        syncSubjects
+      );
+
+    };
+
+  }, []);
 
 
   // ===================================================
@@ -164,9 +400,13 @@ function TasksPage() {
         if (result?.success) {
 
           const loadedTasks =
-            Array.isArray(result.tasks)
+            Array.isArray(
+              result.tasks
+            )
               ? result.tasks
-              : Array.isArray(result.data)
+              : Array.isArray(
+                  result.data
+                )
                 ? result.data
                 : [];
 
@@ -218,17 +458,12 @@ function TasksPage() {
     };
 
 
-    // Small delay keeps initial rendering clean
     timerId =
       window.setTimeout(
         loadTasks,
         0
       );
 
-
-    // =================================================
-    // GLOBAL TASK UPDATE EVENT
-    // =================================================
 
     const handleTasksUpdated = () => {
 
@@ -242,10 +477,6 @@ function TasksPage() {
       handleTasksUpdated
     );
 
-
-    // =================================================
-    // CLEANUP
-    // =================================================
 
     return () => {
 
@@ -270,28 +501,67 @@ function TasksPage() {
 
 
   // ===================================================
-  // SUBJECT LIST
+  // SUBJECT LIST FOR FILTER
+  // ===================================================
+  //
+  // IMPORTANT:
+  // Do NOT merge task subjects here.
+  // This prevents old subjects from returning.
   // ===================================================
 
-  const subjects = useMemo(() => {
+  const subjects =
+    useMemo(
+      () => currentSubjects,
+      [currentSubjects]
+    );
 
-    const taskSubjects =
-      tasks
-        .map(
-          (task) =>
-            task?.subject
+
+  // ===================================================
+  // SUBJECT LIST FOR CREATE / EDIT MODAL
+  // ===================================================
+  //
+  // New task:
+  //   current subjects only.
+  //
+  // Editing old task:
+  //   current subjects + old task subject temporarily.
+  // ===================================================
+
+  const modalSubjects =
+    useMemo(() => {
+
+      const list = [
+        ...subjects,
+      ];
+
+      const oldSubject =
+        String(
+          editingTask?.subject || ""
+        ).trim();
+
+
+      if (
+        oldSubject &&
+        !list.some(
+          (subject) =>
+            subject.toLowerCase() ===
+            oldSubject.toLowerCase()
         )
-        .filter(Boolean);
+      ) {
+
+        list.push(
+          oldSubject
+        );
+
+      }
 
 
-    return [
-      ...new Set([
-        ...DEFAULT_SUBJECTS,
-        ...taskSubjects,
-      ]),
-    ];
+      return list;
 
-  }, [tasks]);
+    }, [
+      subjects,
+      editingTask,
+    ]);
 
 
   // ===================================================
@@ -322,10 +592,6 @@ function TasksPage() {
             ).toLowerCase();
 
 
-          // -------------------------------------------
-          // SEARCH
-          // -------------------------------------------
-
           const matchesSearch =
             !searchText ||
             title.includes(
@@ -335,10 +601,6 @@ function TasksPage() {
               searchText
             );
 
-
-          // -------------------------------------------
-          // STATUS
-          // -------------------------------------------
 
           let matchesStatus =
             true;
@@ -368,15 +630,15 @@ function TasksPage() {
           }
 
 
-          // -------------------------------------------
-          // SUBJECT
-          // -------------------------------------------
-
           const matchesSubject =
             subjectFilter ===
               "all" ||
-            task?.subject ===
-              subjectFilter;
+            String(
+              task?.subject || ""
+            ).toLowerCase() ===
+              String(
+                subjectFilter
+              ).toLowerCase();
 
 
           return (
@@ -462,7 +724,10 @@ function TasksPage() {
     setEditingTask(null);
 
     setForm({
-      ...EMPTY_FORM,
+      title: "",
+      subject:
+        subjects[0] || "",
+      time: "",
     });
 
     setError("");
@@ -493,7 +758,8 @@ function TasksPage() {
 
       subject:
         task?.subject ||
-        "Python",
+        subjects[0] ||
+        "",
 
       time:
         task?.time ||
@@ -553,10 +819,6 @@ function TasksPage() {
     const time =
       form.time.trim();
 
-
-    // -----------------------------------------------
-    // VALIDATION
-    // -----------------------------------------------
 
     if (
       !title ||
@@ -666,7 +928,6 @@ function TasksPage() {
         closeModal();
 
 
-        // Notify Dashboard
         window.dispatchEvent(
           new Event(
             "learnova:tasks-updated"
@@ -741,7 +1002,6 @@ function TasksPage() {
       closeModal();
 
 
-      // Notify Dashboard
       window.dispatchEvent(
         new Event(
           "learnova:tasks-updated"
@@ -803,10 +1063,6 @@ function TasksPage() {
     const newCompleted =
       !oldCompleted;
 
-
-    // -----------------------------------------------
-    // OPTIMISTIC UPDATE
-    // -----------------------------------------------
 
     setTasks(
       (currentTasks) =>
@@ -905,10 +1161,6 @@ function TasksPage() {
         err
       );
 
-
-      // ---------------------------------------------
-      // ROLLBACK
-      // ---------------------------------------------
 
       setTasks(
         (currentTasks) =>
@@ -1108,9 +1360,7 @@ function TasksPage() {
     <main className="tasks-page">
 
 
-      {/* =================================================
-         HEADER
-         ================================================= */}
+      {/* HEADER */}
 
       <div className="tasks-header">
 
@@ -1149,9 +1399,7 @@ function TasksPage() {
       </div>
 
 
-      {/* =================================================
-         ERROR
-         ================================================= */}
+      {/* ERROR */}
 
       {error && (
 
@@ -1176,14 +1424,9 @@ function TasksPage() {
       )}
 
 
-      {/* =================================================
-         STATISTICS
-         ================================================= */}
+      {/* STATISTICS */}
 
       <div className="tasks-stats">
-
-
-        {/* TOTAL */}
 
         <div className="tasks-stat">
 
@@ -1210,8 +1453,6 @@ function TasksPage() {
         </div>
 
 
-        {/* COMPLETED */}
-
         <div className="tasks-stat">
 
           <div className="tasks-stat-icon completed">
@@ -1237,8 +1478,6 @@ function TasksPage() {
         </div>
 
 
-        {/* PENDING */}
-
         <div className="tasks-stat">
 
           <div className="tasks-stat-icon pending">
@@ -1263,8 +1502,6 @@ function TasksPage() {
 
         </div>
 
-
-        {/* PROGRESS */}
 
         <div className="tasks-stat">
 
@@ -1293,14 +1530,9 @@ function TasksPage() {
       </div>
 
 
-      {/* =================================================
-         SEARCH + FILTERS
-         ================================================= */}
+      {/* SEARCH + FILTERS */}
 
       <div className="tasks-filter-card">
-
-
-        {/* SEARCH */}
 
         <div className="tasks-search">
 
@@ -1319,8 +1551,6 @@ function TasksPage() {
 
         </div>
 
-
-        {/* STATUS */}
 
         <select
           value={statusFilter}
@@ -1346,7 +1576,7 @@ function TasksPage() {
         </select>
 
 
-        {/* SUBJECT */}
+        {/* CURRENT SUBJECTS ONLY */}
 
         <select
           value={subjectFilter}
@@ -1379,9 +1609,7 @@ function TasksPage() {
       </div>
 
 
-      {/* =================================================
-         LIST HEADER
-         ================================================= */}
+      {/* LIST HEADER */}
 
       <div className="tasks-list-header">
 
@@ -1404,9 +1632,7 @@ function TasksPage() {
       </div>
 
 
-      {/* =================================================
-         EMPTY STATE
-         ================================================= */}
+      {/* EMPTY STATE */}
 
       {filteredTasks.length === 0 ? (
 
@@ -1421,12 +1647,10 @@ function TasksPage() {
           </h2>
 
           <p>
-
             {tasks.length === 0
               ? "Create your first study task to get started."
               : "Try changing your search or filters."
             }
-
           </p>
 
 
@@ -1452,11 +1676,6 @@ function TasksPage() {
 
       ) : (
 
-
-        /* =================================================
-           TASK LIST
-           ================================================= */
-
         <section className="tasks-list">
 
           {filteredTasks.map(
@@ -1477,9 +1696,6 @@ function TasksPage() {
                       : "task-item"
                   }
                 >
-
-
-                  {/* CHECKBOX */}
 
                   <button
                     type="button"
@@ -1504,8 +1720,6 @@ function TasksPage() {
 
                   </button>
 
-
-                  {/* TASK INFORMATION */}
 
                   <div className="task-info">
 
@@ -1533,8 +1747,6 @@ function TasksPage() {
                   </div>
 
 
-                  {/* SUBJECT */}
-
                   <span className="subject-tag">
 
                     <FiBookOpen />
@@ -1544,8 +1756,6 @@ function TasksPage() {
 
                   </span>
 
-
-                  {/* EDIT */}
 
                   <button
                     type="button"
@@ -1562,8 +1772,6 @@ function TasksPage() {
 
                   </button>
 
-
-                  {/* DELETE */}
 
                   <button
                     type="button"
@@ -1592,9 +1800,7 @@ function TasksPage() {
       )}
 
 
-      {/* =================================================
-         CREATE / EDIT MODAL
-         ================================================= */}
+      {/* CREATE / EDIT MODAL */}
 
       {showModal && (
 
@@ -1615,9 +1821,6 @@ function TasksPage() {
         >
 
           <div className="task-modal">
-
-
-            {/* MODAL HEADER */}
 
             <div className="task-modal-header">
 
@@ -1655,16 +1858,11 @@ function TasksPage() {
             </div>
 
 
-            {/* MODAL FORM */}
-
             <form
               onSubmit={
                 handleSubmit
               }
             >
-
-
-              {/* TITLE */}
 
               <div className="task-form-group">
 
@@ -1689,8 +1887,6 @@ function TasksPage() {
               </div>
 
 
-              {/* SUBJECT */}
-
               <div className="task-form-group">
 
                 <label htmlFor="task-subject">
@@ -1706,28 +1902,49 @@ function TasksPage() {
                   onChange={
                     handleInput
                   }
-                  disabled={saving}
+                  disabled={
+                    saving ||
+                    subjects.length === 0
+                  }
+                  required
                 >
 
-                  {subjects.map(
-                    (subject) => (
+                  {modalSubjects.length === 0 ? (
 
-                      <option
-                        value={subject}
-                        key={subject}
-                      >
-                        {subject}
-                      </option>
+                    <option value="">
+                      No subjects available
+                    </option>
 
+                  ) : (
+
+                    modalSubjects.map(
+                      (subject) => (
+
+                        <option
+                          value={subject}
+                          key={subject}
+                        >
+                          {subject}
+                        </option>
+
+                      )
                     )
+
                   )}
 
                 </select>
 
+                {subjects.length === 0 && (
+
+                  <small>
+                    Please add a subject first
+                    from the Subjects page.
+                  </small>
+
+                )}
+
               </div>
 
-
-              {/* TIME */}
 
               <div className="task-form-group">
 
@@ -1752,8 +1969,6 @@ function TasksPage() {
               </div>
 
 
-              {/* MODAL ACTIONS */}
-
               <div className="task-modal-actions">
 
                 <button
@@ -1771,7 +1986,10 @@ function TasksPage() {
                 <button
                   type="submit"
                   className="task-save-btn"
-                  disabled={saving}
+                  disabled={
+                    saving ||
+                    subjects.length === 0
+                  }
                 >
 
                   {saving ? (

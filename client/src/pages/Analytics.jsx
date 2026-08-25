@@ -1,10 +1,10 @@
 // =====================================================
-// LEARNOVA AI
-// ADVANCED ANALYTICS PAGE
+// LEARNOVA AI - ANALYTICS PAGE
 // =====================================================
+
 import "./analytics.css";
+
 import {
-  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -12,18 +12,262 @@ import {
 
 import { getTasks } from "../services/taskService";
 
+
 // =====================================================
-// AVAILABLE SUBJECTS
+// CURRENT USER + USER-SPECIFIC SUBJECTS
+// =====================================================
+//
+// IMPORTANT:
+// Every user has a separate subject list:
+//
+// learnova_subjects_<USER_ID>
+//
+// Analytics must NEVER read a global subject list.
 // =====================================================
 
-const SUBJECTS = [
-  "Python",
-  "AI",
-  "SPM",
-  "DBMS",
-  "DSA",
-  "OS",
-];
+const getCurrentUser = () => {
+  const possibleKeys = [
+    "user",
+    "currentUser",
+    "learnova_user",
+    "learnovaUser",
+    "authUser",
+    "loggedInUser",
+    "userData",
+  ];
+
+  for (const key of possibleKeys) {
+    try {
+      const value =
+        localStorage.getItem(key);
+
+      if (!value) {
+        continue;
+      }
+
+      const parsed =
+        JSON.parse(value);
+
+      if (
+        parsed &&
+        typeof parsed === "object"
+      ) {
+        return parsed;
+      }
+    } catch {
+      // Ignore invalid localStorage data.
+    }
+  }
+
+  return null;
+};
+
+
+const getUserIdentifier = () => {
+  const user =
+    getCurrentUser();
+
+  if (!user) {
+    return null;
+  }
+
+  const identifier =
+    user._id ||
+    user.id ||
+    user.userId ||
+    user.email;
+
+  return identifier
+    ? String(identifier)
+    : null;
+};
+
+
+const getSubjectStorageKey = () => {
+  const userId =
+    getUserIdentifier();
+
+  if (!userId) {
+    return null;
+  }
+
+  return `learnova_subjects_${userId}`;
+};
+
+
+const normalizeSubject = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+
+const getCurrentSubjects = () => {
+  try {
+    const storageKey =
+      getSubjectStorageKey();
+
+    if (!storageKey) {
+      return [];
+    }
+
+    const saved =
+      localStorage.getItem(
+        storageKey
+      );
+
+    if (!saved) {
+      return [];
+    }
+
+    const parsed =
+      JSON.parse(saved);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    const names = parsed
+      .map((item) =>
+        String(
+          item?.name || ""
+        ).trim()
+      )
+      .filter(Boolean);
+
+    return names.filter(
+      (name, index, array) =>
+        index ===
+        array.findIndex(
+          (item) =>
+            normalizeSubject(item) ===
+            normalizeSubject(name)
+        )
+    );
+  } catch (error) {
+    console.error(
+      "Analytics subjects loading error:",
+      error
+    );
+
+    return [];
+  }
+};
+
+
+// =====================================================
+// SUBJECT MATCHING
+// =====================================================
+//
+// Handles common names such as:
+// Artificial Intelligence <-> AI
+// Data Structures <-> DSA
+// Operating System <-> OS
+// Software Project Management <-> SPM
+//
+// This is only for matching saved task/quiz records.
+// The UI still displays the CURRENT subject name.
+// =====================================================
+
+const SUBJECT_ALIASES = {
+  "artificial intelligence": [
+    "artificial intelligence",
+    "ai",
+  ],
+  ai: [
+    "artificial intelligence",
+    "ai",
+  ],
+
+  "data structures": [
+    "data structures",
+    "data structure",
+    "dsa",
+  ],
+  dsa: [
+    "data structures",
+    "data structure",
+    "dsa",
+  ],
+
+  "operating system": [
+    "operating system",
+    "operating systems",
+    "os",
+  ],
+  os: [
+    "operating system",
+    "operating systems",
+    "os",
+  ],
+
+  "software project management": [
+    "software project management",
+    "spm",
+  ],
+  spm: [
+    "software project management",
+    "spm",
+  ],
+
+  dbms: ["dbms"],
+  python: ["python"],
+};
+
+const isValidQuizResult = (result) => {
+  const score = Number(result?.score);
+  const total = Number(
+    result?.totalQuestions ??
+    result?.total ??
+    0
+  );
+
+  if (!Number.isFinite(score) ||
+      !Number.isFinite(total) ||
+      total < 1 ||
+      score < 0 ||
+      score > total) {
+    return false;
+  }
+
+  return true;
+};
+
+
+const subjectMatches = (
+  recordSubject,
+  currentSubjects
+) => {
+  const recordKey =
+    normalizeSubject(recordSubject);
+
+  if (
+    !recordKey ||
+    !Array.isArray(currentSubjects)
+  ) {
+    return false;
+  }
+
+  return currentSubjects.some(
+    (currentSubject) => {
+      const currentKey =
+        normalizeSubject(currentSubject);
+
+      if (!currentKey) {
+        return false;
+      }
+
+      const aliases =
+        SUBJECT_ALIASES[currentKey];
+
+      if (aliases) {
+        return aliases.includes(recordKey);
+      }
+
+      return currentKey === recordKey;
+    }
+  );
+};
+
 
 // =====================================================
 // FETCH TASKS
@@ -33,21 +277,22 @@ const fetchAnalyticsTasks = async () => {
   try {
     const result = await getTasks();
 
-    if (!result.success) {
+    if (!result?.success) {
       return {
         success: false,
         tasks: [],
         message:
-          result.message ||
+          result?.message ||
           "Unable to load analytics.",
       };
     }
 
-    const tasks = Array.isArray(result.tasks)
-      ? result.tasks
-      : Array.isArray(result.data)
-        ? result.data
-        : [];
+    const tasks =
+      Array.isArray(result.tasks)
+        ? result.tasks
+        : Array.isArray(result.data)
+          ? result.data
+          : [];
 
     return {
       success: true,
@@ -56,7 +301,7 @@ const fetchAnalyticsTasks = async () => {
     };
   } catch (error) {
     console.error(
-      "Analytics loading error:",
+      "Analytics task loading error:",
       error
     );
 
@@ -69,62 +314,6 @@ const fetchAnalyticsTasks = async () => {
   }
 };
 
-// =====================================================
-// GET TASK DATE
-// =====================================================
-
-const getTaskDate = (task) => {
-  const possibleDate =
-    task.date ||
-    task.dueDate ||
-    task.createdAt ||
-    task.created_at;
-
-  if (!possibleDate) {
-    return null;
-  }
-
-  const date = new Date(possibleDate);
-
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  return date;
-};
-
-// =====================================================
-// GET LAST 7 DAYS
-// =====================================================
-
-const getLastSevenDays = () => {
-  const days = [];
-  const today = new Date();
-
-  for (let i = 6; i >= 0; i--) {
-    const date = new Date(today);
-
-    date.setHours(0, 0, 0, 0);
-    date.setDate(today.getDate() - i);
-
-    days.push(date);
-  }
-
-  return days;
-};
-
-// =====================================================
-// FORMAT DAY
-// =====================================================
-
-const formatDay = (date) => {
-  return date.toLocaleDateString(
-    "en-US",
-    {
-      weekday: "short",
-    }
-  );
-};
 
 // =====================================================
 // FETCH QUIZ RESULTS
@@ -133,11 +322,14 @@ const formatDay = (date) => {
 const fetchQuizResults = async () => {
   try {
     const token =
-      localStorage.getItem("learnova_token") ||
+      localStorage.getItem(
+        "learnova_token"
+      ) ||
       localStorage.getItem("token");
 
     const headers = {
-      "Content-Type": "application/json",
+      "Content-Type":
+        "application/json",
     };
 
     if (token) {
@@ -153,15 +345,18 @@ const fetchQuizResults = async () => {
       }
     );
 
-    const data = await response.json();
+    const data =
+      await response.json();
 
     return {
       success: response.ok,
-      results: Array.isArray(data.results)
+      results: Array.isArray(
+        data?.results
+      )
         ? data.results
         : [],
       message:
-        data.message || "",
+        data?.message || "",
     };
   } catch (error) {
     console.error(
@@ -178,32 +373,261 @@ const fetchQuizResults = async () => {
   }
 };
 
+
 // =====================================================
-// ANALYTICS
+// AI RECOMMENDATION
+// =====================================================
+//
+// IMPORTANT:
+// This function does NOT call React setState.
+// It only returns data.
+// That prevents the React setState-in-effect warning.
+// =====================================================
+
+const requestAIRecommendation = async (
+  results
+) => {
+  if (
+    !Array.isArray(results) ||
+    results.length === 0
+  ) {
+    return {
+      recommendation:
+        "Complete an AI quiz so Learnova can create a personalized study recommendation.",
+      error: "",
+    };
+  }
+
+  try {
+    const totalQuizzes =
+      results.length;
+
+    const averageScore =
+      Math.round(
+        results.reduce(
+          (sum, result) =>
+            sum +
+            Number(
+              result?.percentage || 0
+            ),
+          0
+        ) / totalQuizzes
+      );
+
+    const subjectMap = {};
+
+    results.forEach((result) => {
+      const subject =
+        String(
+          result?.subject ||
+            "General"
+        ).trim();
+
+      if (!subjectMap[subject]) {
+        subjectMap[subject] = {
+          total: 0,
+          count: 0,
+        };
+      }
+
+      subjectMap[subject].total +=
+        Number(
+          result?.percentage || 0
+        );
+
+      subjectMap[subject].count +=
+        1;
+    });
+
+    const subjectAverages =
+      Object.entries(subjectMap)
+        .map(
+          ([subject, data]) => ({
+            subject,
+            average:
+              Math.round(
+                data.total /
+                  data.count
+              ),
+          })
+        )
+        .sort(
+          (a, b) =>
+            a.average - b.average
+        );
+
+    const weakest =
+      subjectAverages[0] || {
+        subject: "General",
+        average: 0,
+      };
+
+    const response = await fetch(
+      "http://localhost:5000/api/ai/recommendation",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          averageScore,
+          weakSubject:
+            weakest.subject,
+          weakSubjectScore:
+            weakest.average,
+          totalQuizzes,
+          recentResults:
+            results.slice(0, 5),
+        }),
+      }
+    );
+
+    const data =
+      await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data?.message ||
+          "Unable to generate AI recommendation."
+      );
+    }
+
+    if (
+      !data?.recommendation ||
+      typeof data.recommendation !==
+        "string"
+    ) {
+      throw new Error(
+        "AI returned an empty recommendation."
+      );
+    }
+
+    return {
+      recommendation:
+        data.recommendation.trim(),
+      error: "",
+    };
+  } catch (error) {
+    console.error(
+      "AI recommendation error:",
+      error
+    );
+
+    return {
+      recommendation: "",
+      error:
+        error?.message ||
+        "AI recommendation unavailable.",
+    };
+  }
+};
+
+
+// =====================================================
+// DATE HELPERS
+// =====================================================
+
+const getTaskDate = (task) => {
+  const value =
+    task?.date ||
+    task?.dueDate ||
+    task?.createdAt ||
+    task?.created_at;
+
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  return Number.isNaN(
+    date.getTime()
+  )
+    ? null
+    : date;
+};
+
+const getLastSevenDays = () => {
+  const days = [];
+  const today = new Date();
+
+  for (let i = 6; i >= 0; i -= 1) {
+    const date = new Date(today);
+
+    date.setHours(0, 0, 0, 0);
+    date.setDate(
+      today.getDate() - i
+    );
+
+    days.push(date);
+  }
+
+  return days;
+};
+
+const formatDay = (date) =>
+  date.toLocaleDateString(
+    "en-US",
+    {
+      weekday: "short",
+    }
+  );
+
+
+// =====================================================
+// ANALYTICS COMPONENT
 // =====================================================
 
 function Analytics() {
   // ===================================================
-  // TASK STATE
+  // TASKS
   // ===================================================
 
-  const [tasks, setTasks] = useState([]);
-
-  // ===================================================
-  // QUIZ STATE
-  // ===================================================
-
-  const [quizResults, setQuizResults] =
+  const [tasks, setTasks] =
     useState([]);
 
-  const [quizLoading, setQuizLoading] =
+  const [loading, setLoading] =
     useState(true);
 
-  const [quizError, setQuizError] =
+  const [error, setError] =
     useState("");
 
+
   // ===================================================
-  // AI RECOMMENDATION STATE
+  // CURRENT SUBJECTS
+  // ===================================================
+
+  const [
+    currentSubjects,
+    setCurrentSubjects,
+  ] = useState(() =>
+    getCurrentSubjects()
+  );
+
+
+  // ===================================================
+  // QUIZZES
+  // ===================================================
+
+  const [
+    quizResults,
+    setQuizResults,
+  ] = useState([]);
+
+  const [
+    quizLoading,
+    setQuizLoading,
+  ] = useState(true);
+
+  const [
+    quizError,
+    setQuizError,
+  ] = useState("");
+
+
+  // ===================================================
+  // AI STATE
   // ===================================================
 
   const [
@@ -221,172 +645,86 @@ function Analytics() {
     setAiRecommendationError,
   ] = useState("");
 
-  // ===================================================
-  // LOADING
-  // ===================================================
-
-  const [loading, setLoading] =
-    useState(true);
 
   // ===================================================
-  // ERROR
+  // SYNC SUBJECTS
+  // ===================================================
+  //
+  // Subjects page must dispatch:
+  // window.dispatchEvent(
+  //   new Event("learnova:subjects-updated")
+  // )
+  //
+  // Storage event handles another browser tab.
+  // Focus handles returning to Analytics.
   // ===================================================
 
-  const [error, setError] =
-    useState("");
+  useEffect(() => {
+    const syncSubjects = () => {
+      const nextSubjects =
+        getCurrentSubjects();
 
-  // ===================================================
-  // AI RECOMMENDATION
-  // ===================================================
+      setCurrentSubjects(
+        nextSubjects
+      );
+    };
 
-  const generateAIRecommendation =
-    useCallback(
-      async (results) => {
-        if (
-          !Array.isArray(results) ||
-          results.length === 0
-        ) {
-          setAiRecommendation(
-            "Complete an AI quiz so Learnova can create a personalized study recommendation."
-          );
-
-          setAiRecommendationError("");
-
-          return;
-        }
-
-        try {
-          setAiRecommendationLoading(true);
-          setAiRecommendationError("");
-
-          const totalQuizzes =
-            results.length;
-
-          const averageScore =
-            Math.round(
-              results.reduce(
-                (sum, result) =>
-                  sum +
-                  Number(
-                    result.percentage || 0
-                  ),
-                0
-              ) / totalQuizzes
-            );
-
-          const subjectMap = {};
-
-          results.forEach((result) => {
-            const subject =
-              result.subject ||
-              "General";
-
-            if (!subjectMap[subject]) {
-              subjectMap[subject] = {
-                total: 0,
-                count: 0,
-              };
-            }
-
-            subjectMap[subject].total +=
-              Number(
-                result.percentage || 0
-              );
-
-            subjectMap[subject].count +=
-              1;
-          });
-
-          const subjectAverages =
-            Object.entries(subjectMap)
-              .map(
-                ([subject, data]) => ({
-                  subject,
-                  average:
-                    Math.round(
-                      data.total /
-                        data.count
-                    ),
-                })
-              )
-              .sort(
-                (a, b) =>
-                  a.average -
-                  b.average
-              );
-
-          const weakest =
-            subjectAverages[0] || {
-              subject: "General",
-              average: 0,
-            };
-
-          const response =
-            await fetch(
-              "http://localhost:5000/api/ai/recommendation",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                },
-                body: JSON.stringify({
-                  averageScore,
-                  weakSubject:
-                    weakest.subject,
-                  weakSubjectScore:
-                    weakest.average,
-                  totalQuizzes,
-                  recentResults:
-                    results.slice(0, 5),
-                }),
-              }
-            );
-
-          const data =
-            await response.json();
-
-          if (!response.ok) {
-            throw new Error(
-              data.message ||
-                "Unable to generate AI recommendation."
-            );
-          }
-
-          if (
-            !data.recommendation ||
-            typeof data.recommendation !==
-              "string"
-          ) {
-            throw new Error(
-              "AI returned an empty recommendation."
-            );
-          }
-
-          setAiRecommendation(
-            data.recommendation.trim()
-          );
-        } catch (error) {
-          console.error(
-            "AI recommendation error:",
-            error
-          );
-
-          setAiRecommendationError(
-            error.message ||
-              "AI recommendation unavailable."
-          );
-        } finally {
-          setAiRecommendationLoading(
-            false
-          );
-        }
-      },
-      []
+    window.addEventListener(
+      "learnova:subjects-updated",
+      syncSubjects
     );
 
+    window.addEventListener(
+      "storage",
+      syncSubjects
+    );
+
+    window.addEventListener(
+      "focus",
+      syncSubjects
+    );
+
+    window.addEventListener(
+      "learnova:user-updated",
+      syncSubjects
+    );
+
+    window.addEventListener(
+      "learnova:auth-changed",
+      syncSubjects
+    );
+
+    return () => {
+      window.removeEventListener(
+        "learnova:subjects-updated",
+        syncSubjects
+      );
+
+      window.removeEventListener(
+        "storage",
+        syncSubjects
+      );
+
+      window.removeEventListener(
+        "focus",
+        syncSubjects
+      );
+
+      window.removeEventListener(
+        "learnova:user-updated",
+        syncSubjects
+      );
+
+      window.removeEventListener(
+        "learnova:auth-changed",
+        syncSubjects
+      );
+    };
+  }, []);
+
+
   // ===================================================
-  // LOAD ANALYTICS
+  // LOAD TASKS + QUIZZES
   // ===================================================
 
   useEffect(() => {
@@ -406,30 +744,27 @@ function Analytics() {
           return;
         }
 
-        if (!taskResult.success) {
-          setError(
-            taskResult.message
-          );
-        } else {
+        if (taskResult.success) {
           setTasks(
             taskResult.tasks
           );
           setError("");
+        } else {
+          setTasks([]);
+          setError(
+            taskResult.message
+          );
         }
 
-        if (!quizResult.success) {
-          setQuizError(
-            quizResult.message
-          );
-        } else {
+        if (quizResult.success) {
           setQuizResults(
             quizResult.results
           );
-
           setQuizError("");
-
-          generateAIRecommendation(
-            quizResult.results
+        } else {
+          setQuizResults([]);
+          setQuizError(
+            quizResult.message
           );
         }
 
@@ -437,27 +772,210 @@ function Analytics() {
         setQuizLoading(false);
       };
 
-    loadAnalytics();
+    const timer =
+      window.setTimeout(
+        loadAnalytics,
+        0
+      );
 
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
-  }, [
-    generateAIRecommendation,
-  ]);
+  }, []);
+
 
   // ===================================================
-  // CALCULATE ANALYTICS
+  // LIVE QUIZ RESULT SYNC
+  // ===================================================
+  //
+  // Quizzes.jsx dispatches:
+  // "learnova:quiz-results-updated"
+  //
+  // So Analytics immediately fetches the newly saved
+  // MongoDB result without requiring a full page reload.
+  // ===================================================
+
+  useEffect(() => {
+    let active = true;
+
+    const refreshQuizResults = async () => {
+      const result =
+        await fetchQuizResults();
+
+      if (!active) {
+        return;
+      }
+
+      if (result.success) {
+        setQuizResults(
+          result.results
+        );
+        setQuizError("");
+      } else {
+        setQuizResults([]);
+        setQuizError(
+          result.message
+        );
+      }
+
+      setQuizLoading(false);
+    };
+
+
+    window.addEventListener(
+      "learnova:quiz-results-updated",
+      refreshQuizResults
+    );
+
+    window.addEventListener(
+      "focus",
+      refreshQuizResults
+    );
+
+
+    return () => {
+      active = false;
+
+      window.removeEventListener(
+        "learnova:quiz-results-updated",
+        refreshQuizResults
+      );
+
+      window.removeEventListener(
+        "focus",
+        refreshQuizResults
+      );
+    };
+  }, []);
+
+
+  // ===================================================
+  // CURRENT DATA ONLY
+  // ===================================================
+  //
+  // Old records can remain in MongoDB.
+  // They are deliberately ignored if their subject is
+  // not present in the CURRENT Subjects page list.
+  // ===================================================
+
+  const activeTasks = useMemo(() => {
+    if (!Array.isArray(tasks)) {
+      return [];
+    }
+
+    return tasks.filter((task) =>
+      subjectMatches(
+        task?.subject,
+        currentSubjects
+      )
+    );
+  }, [
+    tasks,
+    currentSubjects,
+  ]);
+
+  const activeQuizResults =
+    useMemo(() => {
+      if (
+        !Array.isArray(
+          quizResults
+        )
+      ) {
+        return [];
+      }
+
+      return quizResults.filter(
+        (result) =>
+          isValidQuizResult(result) &&
+          subjectMatches(
+            result?.subject,
+            currentSubjects
+          )
+      );
+    }, [
+      quizResults,
+      currentSubjects,
+    ]);
+
+
+  // ===================================================
+  // AI RECOMMENDATION
+  // ===================================================
+  //
+  // setState is intentionally executed asynchronously
+  // after the effect has scheduled its work.
+  // This avoids the React setState-in-effect warning.
+  // ===================================================
+
+  useEffect(() => {
+    if (quizLoading) {
+      return undefined;
+    }
+
+    let active = true;
+
+    const timer =
+      window.setTimeout(
+        async () => {
+          if (!active) {
+            return;
+          }
+
+          setAiRecommendationLoading(
+            true
+          );
+
+          setAiRecommendationError(
+            ""
+          );
+
+          const result =
+            await requestAIRecommendation(
+              activeQuizResults
+            );
+
+          if (!active) {
+            return;
+          }
+
+          setAiRecommendation(
+            result.recommendation
+          );
+
+          setAiRecommendationError(
+            result.error
+          );
+
+          setAiRecommendationLoading(
+            false
+          );
+        },
+        0
+      );
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [
+    activeQuizResults,
+    quizLoading,
+  ]);
+
+
+  // ===================================================
+  // MAIN ANALYTICS
   // ===================================================
 
   const analytics = useMemo(() => {
     const totalTasks =
-      tasks.length;
+      activeTasks.length;
 
     const completedTasks =
-      tasks.filter(
+      activeTasks.filter(
         (task) =>
-          task.completed === true
+          task?.completed === true
       ).length;
 
     const pendingTasks =
@@ -473,19 +991,21 @@ function Analytics() {
               100
           );
 
-    // -----------------------------------------------
+
+    // -------------------------------------------------
     // SUBJECT PROGRESS
-    // -----------------------------------------------
+    // -------------------------------------------------
 
     const subjectProgress =
-      SUBJECTS.map(
+      currentSubjects.map(
         (subjectName) => {
           const subjectTasks =
-            tasks.filter(
+            activeTasks.filter(
               (task) =>
-                task.subject
-                  ?.toLowerCase() ===
-                subjectName.toLowerCase()
+                subjectMatches(
+                  task?.subject,
+                  [subjectName]
+                )
             );
 
           const total =
@@ -494,7 +1014,7 @@ function Analytics() {
           const completed =
             subjectTasks.filter(
               (task) =>
-                task.completed === true
+                task?.completed === true
             ).length;
 
           const pending =
@@ -519,9 +1039,6 @@ function Analytics() {
         }
       );
 
-    // -----------------------------------------------
-    // BEST SUBJECT
-    // -----------------------------------------------
 
     const subjectsWithTasks =
       subjectProgress.filter(
@@ -538,9 +1055,10 @@ function Analytics() {
           )[0]
         : null;
 
-    // -----------------------------------------------
+
+    // -------------------------------------------------
     // WEEKLY ACTIVITY
-    // -----------------------------------------------
+    // -------------------------------------------------
 
     const lastSevenDays =
       getLastSevenDays();
@@ -549,7 +1067,7 @@ function Analytics() {
       lastSevenDays.map(
         (date) => {
           const dayTasks =
-            tasks.filter(
+            activeTasks.filter(
               (task) => {
                 const taskDate =
                   getTaskDate(task);
@@ -572,12 +1090,12 @@ function Analytics() {
           const completed =
             dayTasks.filter(
               (task) =>
-                task.completed === true
+                task?.completed ===
+                true
             ).length;
 
           return {
-            day:
-              formatDay(date),
+            day: formatDay(date),
             date,
             total:
               dayTasks.length,
@@ -612,9 +1130,10 @@ function Analytics() {
               100
           );
 
-    // -----------------------------------------------
+
+    // -------------------------------------------------
     // CONSISTENCY
-    // -----------------------------------------------
+    // -------------------------------------------------
 
     const activeStudyDays =
       weeklyActivity.filter(
@@ -653,30 +1172,31 @@ function Analytics() {
             ? "Your study routine is building. Try to study on a few more days each week."
             : "Start with a simple daily routine and complete at least one small study task each day.";
 
-    // -----------------------------------------------
+
+    // -------------------------------------------------
     // QUIZ ANALYTICS
-    // -----------------------------------------------
+    // -------------------------------------------------
 
     const totalQuizzes =
-      quizResults.length;
+      activeQuizResults.length;
 
     const totalQuizQuestions =
-      quizResults.reduce(
+      activeQuizResults.reduce(
         (sum, result) =>
           sum +
           Number(
-            result.totalQuestions ||
+            result?.totalQuestions ||
               0
           ),
         0
       );
 
     const totalQuizCorrect =
-      quizResults.reduce(
+      activeQuizResults.reduce(
         (sum, result) =>
           sum +
           Number(
-            result.score || 0
+            result?.score || 0
           ),
         0
       );
@@ -685,11 +1205,11 @@ function Analytics() {
       totalQuizzes === 0
         ? 0
         : Math.round(
-            quizResults.reduce(
+            activeQuizResults.reduce(
               (sum, result) =>
                 sum +
                 Number(
-                  result.percentage ||
+                  result?.percentage ||
                     0
                 ),
               0
@@ -700,26 +1220,29 @@ function Analytics() {
       totalQuizzes === 0
         ? 0
         : Math.max(
-            ...quizResults.map(
+            ...activeQuizResults.map(
               (result) =>
                 Number(
-                  result.percentage ||
+                  result?.percentage ||
                     0
                 )
             )
           );
 
-    // -----------------------------------------------
+
+    // -------------------------------------------------
     // QUIZ SUBJECT PERFORMANCE
-    // -----------------------------------------------
+    // -------------------------------------------------
 
     const quizSubjectMap = {};
 
-    quizResults.forEach(
+    activeQuizResults.forEach(
       (result) => {
         const subject =
-          result.subject ||
-          "General";
+          String(
+            result?.subject ||
+              "General"
+          ).trim();
 
         if (
           !quizSubjectMap[subject]
@@ -738,7 +1261,7 @@ function Analytics() {
           subject
         ].totalPercentage +=
           Number(
-            result.percentage ||
+            result?.percentage ||
               0
           );
       }
@@ -760,22 +1283,38 @@ function Analytics() {
         })
       );
 
+
+    // -------------------------------------------------
+    // RECENT QUIZZES
+    // -------------------------------------------------
+
     const recentQuizResults =
-      quizResults.slice(0, 5);
-
-    // -----------------------------------------------
-    // QUIZ TREND
-    // -----------------------------------------------
-
-    const quizTrendResults =
-      [...quizResults]
+      [...activeQuizResults]
         .sort(
           (a, b) =>
             new Date(
-              a.createdAt || 0
+              b?.createdAt || 0
             ) -
             new Date(
-              b.createdAt || 0
+              a?.createdAt || 0
+            )
+        )
+        .slice(0, 5);
+
+
+    // -------------------------------------------------
+    // QUIZ TREND
+    // -------------------------------------------------
+
+    const quizTrendResults =
+      [...activeQuizResults]
+        .sort(
+          (a, b) =>
+            new Date(
+              a?.createdAt || 0
+            ) -
+            new Date(
+              b?.createdAt || 0
             )
         )
         .slice(-10);
@@ -784,22 +1323,22 @@ function Analytics() {
       quizTrendResults.map(
         (result, index) => ({
           id:
-            result._id ||
-            `${result.subject || "quiz"}-${index}`,
+            result?._id ||
+            `${result?.subject || "quiz"}-${index}`,
           label:
             `Quiz ${index + 1}`,
           topic:
-            result.topic ||
+            result?.topic ||
             "General",
           subject:
-            result.subject ||
+            result?.subject ||
             "General",
           score:
             Number(
-              result.percentage || 0
+              result?.percentage || 0
             ),
           date:
-            result.createdAt
+            result?.createdAt
               ? new Date(
                   result.createdAt
                 ).toLocaleDateString()
@@ -807,21 +1346,20 @@ function Analytics() {
         })
       );
 
-    // -----------------------------------------------
+
+    // -------------------------------------------------
     // PERFORMANCE DIRECTION
-    // -----------------------------------------------
+    // -------------------------------------------------
 
     const firstQuizScore =
       quizProgressTrend.length > 0
-        ? quizProgressTrend[0]
-            .score
+        ? quizProgressTrend[0].score
         : 0;
 
     const latestQuizScore =
       quizProgressTrend.length > 0
         ? quizProgressTrend[
-            quizProgressTrend.length -
-              1
+            quizProgressTrend.length - 1
           ].score
         : 0;
 
@@ -864,9 +1402,10 @@ function Analytics() {
             ? `Your quiz performance is relatively stable, with a ${Math.abs(scoreChange)} percentage-point change between your first and latest quiz. Keep practicing to create a stronger upward trend.`
             : "Complete at least two quizzes so Learnova can detect your performance direction.";
 
-    // -----------------------------------------------
-    // WEAK SUBJECT
-    // -----------------------------------------------
+
+    // -------------------------------------------------
+    // WEAKEST SUBJECT
+    // -------------------------------------------------
 
     const sortedQuizSubjects =
       [...quizSubjectPerformance].sort(
@@ -883,33 +1422,21 @@ function Analytics() {
     const weakSubjectLevel =
       !weakSubject
         ? "No data"
-        : quizProgressTrend.length <
-            2
-          ? weakSubject.percentage <
+        : weakSubject.percentage <
             50
-            ? "Needs Attention"
-            : weakSubject.percentage <
-                70
-              ? "Improving"
-              : "Good"
-          : performanceDirection;
+          ? "Needs Attention"
+          : weakSubject.percentage <
+              70
+            ? "Improving"
+            : "Good";
 
     const weakSubjectMessage =
       !weakSubject
         ? "Complete an AI quiz to identify the subject that needs the most attention."
-        : performanceDirection ===
-            "Declining"
-          ? `${weakSubject.name} needs attention because your latest quiz performance declined. Review the latest quiz mistakes before attempting another quiz.`
-          : performanceDirection ===
-              "Improving"
-            ? `${weakSubject.name} is improving. Keep practicing and review mistakes to strengthen your understanding.`
-            : performanceDirection ===
-                "Stable"
-              ? `${weakSubject.name} is currently stable. Target the concepts you miss most often to create an upward trend.`
-              : weakSubject.percentage <
-                  50
-                ? `${weakSubject.name} is currently your weakest quiz subject. Focus on this subject and practice more questions.`
-                : `${weakSubject.name} is performing well. Keep practicing to maintain your score.`;
+        : weakSubject.percentage <
+            50
+          ? `${weakSubject.name} is currently your weakest quiz subject. Focus on this subject and practice more questions.`
+          : `${weakSubject.name} is performing well. Keep practicing to maintain your score.`;
 
     const defaultAIRecommendation =
       !weakSubject
@@ -920,14 +1447,12 @@ function Analytics() {
           : performanceDirection ===
               "Improving"
             ? `Continue focusing on ${weakSubject.name}. Review recent mistakes and keep practicing to maintain the upward trend.`
-            : performanceDirection ===
-                "Stable"
-              ? `Focus on ${weakSubject.name}. Identify repeated mistakes and practice targeted questions to improve your next score.`
-              : `Prioritize ${weakSubject.name}. Review the core concepts, practice 10–15 questions, and retake a quiz after revision.`;
+            : `Focus on ${weakSubject.name}. Identify repeated mistakes and practice targeted questions to improve your next score.`;
 
-    // -----------------------------------------------
+
+    // -------------------------------------------------
     // SMART ACTIONS
-    // -----------------------------------------------
+    // -------------------------------------------------
 
     const smartStudyActions =
       !weakSubject
@@ -965,7 +1490,8 @@ function Analytics() {
               },
               {
                 icon: "📚",
-                title: `Revise ${weakSubject.name}`,
+                title:
+                  `Revise ${weakSubject.name}`,
                 text:
                   "Revisit the concepts connected to those mistakes before taking another quiz.",
               },
@@ -977,52 +1503,30 @@ function Analytics() {
                   "Solve targeted questions first, then retake a short quiz to check improvement.",
               },
             ]
-          : performanceDirection ===
-              "Improving"
-            ? [
-                {
-                  icon: "📈",
-                  title:
-                    "Maintain the momentum",
-                  text: `Keep practicing ${weakSubject.name} while your score is moving upward.`,
-                },
-                {
-                  icon: "🧠",
-                  title:
-                    "Review mistakes",
-                  text:
-                    "Spend a few minutes reviewing incorrect answers so improvement becomes consistent.",
-                },
-                {
-                  icon: "🎯",
-                  title:
-                    "Challenge yourself",
-                  text:
-                    "Try another short quiz to confirm that the improvement is sustained.",
-                },
-              ]
-            : [
-                {
-                  icon: "🎯",
-                  title: `Target ${weakSubject.name}`,
-                  text:
-                    "Focus on the concepts where you lose marks instead of repeating everything.",
-                },
-                {
-                  icon: "🧠",
-                  title:
-                    "Practice weak concepts",
-                  text:
-                    "Use focused questions to turn repeated mistakes into stronger understanding.",
-                },
-                {
-                  icon: "📊",
-                  title:
-                    "Check the next result",
-                  text:
-                    "Take another quiz and compare the score with your current performance.",
-                },
-              ];
+          : [
+              {
+                icon: "🎯",
+                title:
+                  `Target ${weakSubject.name}`,
+                text:
+                  "Focus on the concepts where you lose marks instead of repeating everything.",
+              },
+              {
+                icon: "🧠",
+                title:
+                  "Practice weak concepts",
+                text:
+                  "Use focused questions to turn repeated mistakes into stronger understanding.",
+              },
+              {
+                icon: "📊",
+                title:
+                  "Check the next result",
+                text:
+                  "Take another quiz and compare the score with your current performance.",
+              },
+            ];
+
 
     const completionRatio =
       totalTasks === 0
@@ -1067,7 +1571,12 @@ function Analytics() {
         defaultAIRecommendation,
       smartStudyActions,
     };
-  }, [tasks, quizResults]);
+  }, [
+    activeTasks,
+    activeQuizResults,
+    currentSubjects,
+  ]);
+
 
   // ===================================================
   // REFRESH
@@ -1087,27 +1596,27 @@ function Analytics() {
       fetchQuizResults(),
     ]);
 
-    if (!taskResult.success) {
-      setError(
-        taskResult.message
-      );
-    } else {
+    if (taskResult.success) {
       setTasks(
         taskResult.tasks
       );
+      setError("");
+    } else {
+      setTasks([]);
+      setError(
+        taskResult.message
+      );
     }
 
-    if (!quizResult.success) {
-      setQuizError(
-        quizResult.message
-      );
-    } else {
+    if (quizResult.success) {
       setQuizResults(
         quizResult.results
       );
-
-      generateAIRecommendation(
-        quizResult.results
+      setQuizError("");
+    } else {
+      setQuizResults([]);
+      setQuizError(
+        quizResult.message
       );
     }
 
@@ -1115,40 +1624,40 @@ function Analytics() {
     setQuizLoading(false);
   };
 
+
   // ===================================================
   // LOADING
   // ===================================================
 
- if (loading) {
-  return (
-    <main className="analytics-page">
-      <div className="analytics-loading">
-        <div className="analytics-spinner">
-          ⏳
+  if (loading) {
+    return (
+      <main className="analytics-page">
+        <div className="analytics-loading">
+          <div className="analytics-spinner">
+            ⏳
+          </div>
+
+          <h2>
+            Loading Analytics...
+          </h2>
+
+          <p>
+            Calculating your study progress.
+          </p>
         </div>
+      </main>
+    );
+  }
 
-        <h2>
-          Loading Analytics...
-        </h2>
 
-        <p>
-          Calculating your study progress.
-        </p>
-      </div>
-    </main>
-  );
-}
   // ===================================================
   // MAIN UI
   // ===================================================
 
   return (
-    <main
-      className="analytics-page"
-    >
-      {/* =================================================
-          HEADER
-          ================================================= */}
+    <main className="analytics-page">
+
+      {/* HEADER */}
 
       <div className="analytics-header">
         <div>
@@ -1176,9 +1685,8 @@ function Analytics() {
         </button>
       </div>
 
-      {/* =================================================
-          ERROR
-          ================================================= */}
+
+      {/* ERROR */}
 
       {error && (
         <div className="analytics-error">
@@ -1195,9 +1703,8 @@ function Analytics() {
         </div>
       )}
 
-      {/* =================================================
-          OVERVIEW
-          ================================================= */}
+
+      {/* OVERVIEW */}
 
       <section className="analytics-overview">
         <div className="analytics-card">
@@ -1207,11 +1714,9 @@ function Analytics() {
 
           <div>
             <span>Total Tasks</span>
-
             <strong>
               {analytics.totalTasks}
             </strong>
-
             <small>
               Study tasks
             </small>
@@ -1225,11 +1730,9 @@ function Analytics() {
 
           <div>
             <span>Completed</span>
-
             <strong>
               {analytics.completedTasks}
             </strong>
-
             <small>
               Tasks completed
             </small>
@@ -1243,11 +1746,9 @@ function Analytics() {
 
           <div>
             <span>Pending</span>
-
             <strong>
               {analytics.pendingTasks}
             </strong>
-
             <small>
               Tasks remaining
             </small>
@@ -1263,11 +1764,9 @@ function Analytics() {
             <span>
               Overall Progress
             </span>
-
             <strong>
               {analytics.progress}%
             </strong>
-
             <small>
               Completion rate
             </small>
@@ -1275,9 +1774,8 @@ function Analytics() {
         </div>
       </section>
 
-      {/* =================================================
-          OVERALL PROGRESS
-          ================================================= */}
+
+      {/* OVERALL PROGRESS */}
 
       <section className="analytics-panel">
         <div className="analytics-panel-header">
@@ -1309,13 +1807,13 @@ function Analytics() {
 
         <div className="analytics-progress-footer">
           <span>
-            {analytics.completedTasks}{" "}
-            completed
+            {analytics.completedTasks}
+            {" "}completed
           </span>
 
           <span>
-            {analytics.pendingTasks}{" "}
-            pending
+            {analytics.pendingTasks}
+            {" "}pending
           </span>
 
           <span>
@@ -1324,9 +1822,8 @@ function Analytics() {
         </div>
       </section>
 
-      {/* =================================================
-          WEEKLY ACTIVITY
-          ================================================= */}
+
+      {/* WEEKLY ACTIVITY */}
 
       <section className="analytics-panel">
         <div className="analytics-panel-header">
@@ -1351,7 +1848,6 @@ function Analytics() {
             <small>
               Weekly Tasks
             </small>
-
             <h3>
               {analytics.weeklyTasks}
             </h3>
@@ -1361,7 +1857,6 @@ function Analytics() {
             <small>
               Completed
             </small>
-
             <h3>
               {analytics.weeklyCompleted}
             </h3>
@@ -1371,7 +1866,6 @@ function Analytics() {
             <small>
               Weekly Progress
             </small>
-
             <h3>
               {analytics.weeklyProgress}%
             </h3>
@@ -1402,7 +1896,9 @@ function Analytics() {
 
               return (
                 <div
-                  key={day.date.toISOString()}
+                  key={
+                    day.date.toISOString()
+                  }
                   className="analytics-bar-column"
                 >
                   <span className="analytics-bar-value">
@@ -1410,12 +1906,12 @@ function Analytics() {
                   </span>
 
                   <div
-                    title={`${day.total} task(s), ${day.completed} completed`}
                     className={`analytics-bar ${
                       day.completed > 0
                         ? "analytics-bar-completed"
                         : ""
                     }`}
+                    title={`${day.total} task(s), ${day.completed} completed`}
                     style={{
                       height:
                         `${height}px`,
@@ -1432,9 +1928,8 @@ function Analytics() {
         </div>
       </section>
 
-      {/* =================================================
-          CONSISTENCY
-          ================================================= */}
+
+      {/* CONSISTENCY */}
 
       <section className="analytics-panel">
         <div className="analytics-panel-header">
@@ -1471,7 +1966,8 @@ function Analytics() {
             </small>
 
             <h3>
-              {analytics.activeStudyDays} / 7
+              {analytics.activeStudyDays}
+              {" / 7"}
             </h3>
           </div>
 
@@ -1481,7 +1977,8 @@ function Analytics() {
             </small>
 
             <h3>
-              {analytics.completedStudyDays} / 7
+              {analytics.completedStudyDays}
+              {" / 7"}
             </h3>
           </div>
         </div>
@@ -1497,9 +1994,8 @@ function Analytics() {
         </div>
       </section>
 
-      {/* =================================================
-          SUBJECT PERFORMANCE
-          ================================================= */}
+
+      {/* SUBJECT PERFORMANCE */}
 
       <section className="analytics-panel">
         <div className="analytics-panel-header">
@@ -1509,70 +2005,81 @@ function Analytics() {
             </h2>
 
             <p>
-              Your progress across different
-              subjects.
+              Your progress across your
+              current subjects.
             </p>
           </div>
         </div>
 
-        <div className="analytics-subject-list">
-          {analytics.subjectProgress.map(
-            (subject) => (
-              <div
-                className="analytics-subject"
-                key={subject.name}
-              >
-                <div className="analytics-subject-top">
-                  <div>
-                    <strong>
-                      {subject.name}
-                    </strong>
+        {analytics.subjectProgress.length ===
+        0 ? (
+          <div className="analytics-empty-box">
+            <strong>
+              No current subjects.
+            </strong>
 
-                    <span>
-                      {subject.completed}
-                      {" "}
-                      completed /{" "}
-                      {subject.total}
-                      {" "}
-                      tasks
-                    </span>
+            <p>
+              Add a subject from the Subjects
+              page to see its progress here.
+            </p>
+          </div>
+        ) : (
+          <div className="analytics-subject-list">
+            {analytics.subjectProgress.map(
+              (subject) => (
+                <div
+                  className="analytics-subject"
+                  key={subject.name}
+                >
+                  <div className="analytics-subject-top">
+                    <div>
+                      <strong>
+                        {subject.name}
+                      </strong>
+
+                      <span>
+                        {subject.completed}
+                        {" completed / "}
+                        {subject.total}
+                        {" tasks"}
+                      </span>
+                    </div>
+
+                    <strong>
+                      {subject.percentage}%
+                    </strong>
                   </div>
 
-                  <strong>
-                    {subject.percentage}%
-                  </strong>
-                </div>
+                  <div className="analytics-subject-bar">
+                    <div
+                      className="analytics-subject-fill"
+                      style={{
+                        width:
+                          `${subject.percentage}%`,
+                      }}
+                    />
+                  </div>
 
-                <div className="analytics-subject-bar">
-                  <div
-                    className="analytics-subject-fill"
-                    style={{
-                      width:
-                        `${subject.percentage}%`,
-                    }}
-                  />
+                  <small>
+                    {subject.pending === 0
+                      ? subject.total === 0
+                        ? "📌 No tasks yet"
+                        : "🎉 All tasks completed"
+                      : `${subject.pending} pending task${
+                          subject.pending > 1
+                            ? "s"
+                            : ""
+                        }`}
+                  </small>
                 </div>
-
-                <small>
-                  {subject.pending === 0
-                    ? subject.total === 0
-                      ? "📌 No tasks yet"
-                      : "🎉 All tasks completed"
-                    : `${subject.pending} pending task${
-                        subject.pending > 1
-                          ? "s"
-                          : ""
-                      }`}
-                </small>
-              </div>
-            )
-          )}
-        </div>
+              )
+            )}
+          </div>
+        )}
       </section>
 
-      {/* =================================================
-          QUIZ PERFORMANCE
-          ================================================= */}
+
+      {/* QUIZ PERFORMANCE */}
 
       <section className="analytics-panel">
         <div className="analytics-panel-header">
@@ -1582,16 +2089,15 @@ function Analytics() {
             </h2>
 
             <p>
-              Your AI quiz results saved from
-              Learnova AI.
+              Quiz results for your current
+              subjects.
             </p>
           </div>
 
           {analytics.totalQuizzes > 0 && (
             <strong>
               {analytics.averageQuizScore}%
-              {" "}
-              avg.
+              {" "}avg.
             </strong>
           )}
         </div>
@@ -1619,12 +2125,13 @@ function Analytics() {
           0 ? (
           <div className="analytics-empty-box">
             <strong>
-              No quiz results yet.
+              No quiz results for current
+              subjects.
             </strong>
 
             <p>
-              Complete an AI quiz to see your
-              performance here.
+              Complete a quiz using one of your
+              current subjects to see performance.
             </p>
           </div>
         ) : (
@@ -1679,7 +2186,8 @@ function Analytics() {
                         </strong>
 
                         <span>
-                          {subject.quizzes}{" "}
+                          {subject.quizzes}
+                          {" "}
                           quiz
                           {subject.quizzes >
                           1
@@ -1713,34 +2221,38 @@ function Analytics() {
 
             <div className="analytics-recent-list">
               {analytics.recentQuizResults.map(
-                (result) => (
+                (result, index) => (
                   <div
                     key={
-                      result._id ||
-                      `${result.subject}-${result.createdAt}`
+                      result?._id ||
+                      `${result?.subject}-${result?.createdAt}-${index}`
                     }
                     className="analytics-result-card"
                   >
                     <div>
                       <strong>
-                        {result.topic ||
+                        {result?.topic ||
                           "General"}
                       </strong>
 
                       <div className="analytics-result-meta">
-                        {result.subject ||
+                        {result?.subject ||
                           "General"}
                         {" • "}
-                        {result.score}
+                        {result?.score || 0}
                         {" / "}
                         {
-                          result.totalQuestions
+                          result?.totalQuestions ||
+                          0
                         }
                       </div>
                     </div>
 
                     <strong>
-                      {result.percentage}%
+                      {Number(
+                        result?.percentage ||
+                          0
+                      )}%
                     </strong>
                   </div>
                 )
@@ -1750,9 +2262,8 @@ function Analytics() {
         )}
       </section>
 
-      {/* =================================================
-          QUIZ TREND
-          ================================================= */}
+
+      {/* QUIZ TREND */}
 
       <section className="analytics-panel">
         <div className="analytics-panel-header">
@@ -1762,8 +2273,8 @@ function Analytics() {
             </h2>
 
             <p>
-              See how your quiz performance is
-              changing over time.
+              See how your current-subject quiz
+              performance changes over time.
             </p>
           </div>
 
@@ -1773,8 +2284,8 @@ function Analytics() {
               Latest:{" "}
               {
                 analytics.quizProgressTrend[
-                  analytics.quizProgressTrend
-                    .length - 1
+                  analytics.quizProgressTrend.length -
+                    1
                 ].score
               }%
             </strong>
@@ -1789,8 +2300,8 @@ function Analytics() {
             </strong>
 
             <p>
-              Complete quizzes to build your
-              performance trend.
+              Complete quizzes for your current
+              subjects to build the trend.
             </p>
           </div>
         ) : (
@@ -1847,11 +2358,7 @@ function Analytics() {
                 </small>
 
                 <h3>
-                  {
-                    analytics
-                      .quizProgressTrend[0]
-                      .score
-                  }%
+                  {analytics.firstQuizScore}%
                 </h3>
               </div>
 
@@ -1861,14 +2368,7 @@ function Analytics() {
                 </small>
 
                 <h3>
-                  {
-                    analytics
-                      .quizProgressTrend[
-                      analytics
-                        .quizProgressTrend
-                        .length - 1
-                    ].score
-                  }%
+                  {analytics.latestQuizScore}%
                 </h3>
               </div>
             </div>
@@ -1876,21 +2376,21 @@ function Analytics() {
         )}
       </section>
 
-      {/* =================================================
-          PERFORMANCE DIRECTION
-          ================================================= */}
+
+      {/* PERFORMANCE DIRECTION */}
 
       <section className="analytics-panel">
         <div className="analytics-panel-header">
           <div>
             <h2>
-              {analytics.performanceDirectionIcon}{" "}
+              {analytics.performanceDirectionIcon}
+              {" "}
               Performance Direction
             </h2>
 
             <p>
               Learnova compares your first and
-              latest quiz performance.
+              latest current-subject quiz.
             </p>
           </div>
 
@@ -1948,7 +2448,8 @@ function Analytics() {
           <strong>
             {
               analytics.performanceDirectionIcon
-            }{" "}
+            }
+            {" "}
             {
               analytics.performanceDirection
             }
@@ -1962,9 +2463,8 @@ function Analytics() {
         </div>
       </section>
 
-      {/* =================================================
-          INTELLIGENT INSIGHT
-          ================================================= */}
+
+      {/* INTELLIGENT INSIGHT */}
 
       <section className="analytics-panel">
         <div className="analytics-panel-header">
@@ -1987,7 +2487,6 @@ function Analytics() {
         </div>
 
         <div className="analytics-insight-grid">
-          {/* WEAK SUBJECT */}
 
           <div className="analytics-insight-card analytics-weak-card">
             <span>
@@ -2009,13 +2508,12 @@ function Analytics() {
             <small>
               {analytics.weakSubject
                 ? `${analytics.weakSubject.percentage}% average across ${analytics.weakSubject.quizzes} quiz${
-                    analytics
-                      .weakSubject
-                      .quizzes > 1
+                    analytics.weakSubject.quizzes >
+                    1
                       ? "zes"
                       : ""
                   }`
-                : "Complete an AI quiz to detect your weakest subject."}
+                : "Complete a quiz for a current subject to detect your weakest area."}
             </small>
 
             <p>
@@ -2025,7 +2523,6 @@ function Analytics() {
             </p>
           </div>
 
-          {/* AI RECOMMENDATION */}
 
           <div className="analytics-insight-card analytics-ai-card">
             <span>
@@ -2041,7 +2538,7 @@ function Analytics() {
             {aiRecommendationLoading ? (
               <p>
                 🤖 Learnova is analyzing your
-                quiz performance...
+                current-subject quiz performance...
               </p>
             ) : aiRecommendation ? (
               <p>
@@ -2060,12 +2557,12 @@ function Analytics() {
               </small>
             )}
           </div>
+
         </div>
       </section>
 
-      {/* =================================================
-          SMART ACTIONS
-          ================================================= */}
+
+      {/* SMART ACTIONS */}
 
       <section className="analytics-panel">
         <div className="analytics-panel-header">
@@ -2109,9 +2606,8 @@ function Analytics() {
         </div>
       </section>
 
-      {/* =================================================
-          STUDY SUMMARY
-          ================================================= */}
+
+      {/* STUDY SUMMARY */}
 
       <section className="analytics-summary">
         <div className="analytics-summary-icon">
@@ -2184,9 +2680,6 @@ function Analytics() {
         </div>
       </section>
 
-      {/* =================================================
-          DARK MODE STYLES
-          ================================================= */}
     </main>
   );
 }

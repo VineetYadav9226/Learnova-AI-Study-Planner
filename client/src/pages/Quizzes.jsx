@@ -14,7 +14,7 @@
 // IMPORTANT:
 // Subjects are NOT loaded from backend.
 // They are loaded from:
-// localStorage -> "learnova_subjects"
+// user-specific localStorage -> "learnova_subjects_<USER_ID>"
 //
 // =====================================================
 import "./Quizzes.css";
@@ -22,12 +22,87 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 
+
+// =====================================================
+// CURRENT USER STORAGE HELPERS
+// =====================================================
+
+const getCurrentUser = () => {
+  const possibleKeys = [
+    "user",
+    "currentUser",
+    "learnova_user",
+    "authUser",
+    "loggedInUser",
+    "userData",
+  ];
+
+  for (const key of possibleKeys) {
+    try {
+      const value = localStorage.getItem(key);
+
+      if (!value) {
+        continue;
+      }
+
+      const parsed = JSON.parse(value);
+
+      if (parsed && typeof parsed === "object") {
+        return parsed;
+      }
+    } catch {
+      // Ignore invalid JSON.
+    }
+  }
+
+  return null;
+};
+
+const getUserIdentifier = () => {
+  const user = getCurrentUser();
+
+  if (!user) {
+    return null;
+  }
+
+  const identifier =
+    user._id ||
+    user.id ||
+    user.userId ||
+    user.email;
+
+  return identifier ? String(identifier) : null;
+};
+
+const getUserStorageKey = (baseKey) => {
+  const userId = getUserIdentifier();
+
+  if (!userId) {
+    return null;
+  }
+
+  return `${baseKey}_${userId}`;
+};
+
 // =====================================================
 // STORAGE KEYS
 // =====================================================
 
-const SUBJECTS_STORAGE_KEY = "learnova_subjects";
-const QUIZ_RESULTS_STORAGE_KEY = "learnova_quiz_results";
+const SUBJECTS_STORAGE_BASE_KEY = "learnova_subjects";
+const QUIZ_RESULTS_BASE_KEY = "learnova_quiz_results";
+const QUIZ_QUESTION_HISTORY_BASE_KEY = "learnova_quiz_question_history";
+
+// Backend quiz-result API.
+// Analytics reads quiz results from this endpoint.
+const QUIZ_RESULTS_API_URL =
+  "http://localhost:5000/api/quiz-results";
+
+const getAuthToken = () => {
+  return (
+    localStorage.getItem("learnova_token") ||
+    localStorage.getItem("token")
+  );
+};
 
 
 // =====================================================
@@ -35,711 +110,6 @@ const QUIZ_RESULTS_STORAGE_KEY = "learnova_quiz_results";
 // =====================================================
 
 const DEFAULT_TOPIC = "Programming Basics";
-
-
-// =====================================================
-// QUESTION BANK
-// =====================================================
-//
-// Questions are organized according to subject name.
-//
-// More questions can easily be added later.
-// =====================================================
-
-const QUESTION_BANK = {
-
-  Python: [
-    {
-      question:
-        "What is the primary purpose of the print() function in Python?",
-      options: [
-        "To display the output of a program",
-        "To store data in a variable",
-        "To read input from the user",
-        "To exit a program",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which keyword is used to define a function in Python?",
-      options: [
-        "function",
-        "def",
-        "func",
-        "define",
-      ],
-      answer: 1,
-    },
-
-    {
-      question:
-        "Which of the following is a Python list?",
-      options: [
-        "{1, 2, 3}",
-        "(1, 2, 3)",
-        "[1, 2, 3]",
-        "<1, 2, 3>",
-      ],
-      answer: 2,
-    },
-
-    {
-      question:
-        "Which function is used to take input from the user?",
-      options: [
-        "get()",
-        "input()",
-        "read()",
-        "scan()",
-      ],
-      answer: 1,
-    },
-
-    {
-      question:
-        "Which symbol is used for a single-line comment in Python?",
-      options: [
-        "//",
-        "/*",
-        "#",
-        "--",
-      ],
-      answer: 2,
-    },
-  ],
-
-
-  AI: [
-    {
-      question:
-        "What does AI stand for?",
-      options: [
-        "Automated Internet",
-        "Artificial Intelligence",
-        "Advanced Information",
-        "Artificial Internet",
-      ],
-      answer: 1,
-    },
-
-    {
-      question:
-        "Which of the following is a common AI technique?",
-      options: [
-        "Machine Learning",
-        "Word Processing",
-        "File Compression",
-        "Screen Recording",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "What is Machine Learning mainly concerned with?",
-      options: [
-        "Making computers learn from data",
-        "Designing computer hardware",
-        "Creating network cables",
-        "Formatting documents",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which is an example of AI?",
-      options: [
-        "Calculator",
-        "AI chatbot",
-        "USB cable",
-        "Keyboard",
-      ],
-      answer: 1,
-    },
-
-    {
-      question:
-        "What is a dataset?",
-      options: [
-        "A collection of data",
-        "A programming language",
-        "A computer device",
-        "A network protocol",
-      ],
-      answer: 0,
-    },
-  ],
-
-
-  AIML: [
-    {
-      question:
-        "What does ML stand for?",
-      options: [
-        "Machine Learning",
-        "Memory Logic",
-        "Machine Language",
-        "Model Logic",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which type of learning uses labelled data?",
-      options: [
-        "Supervised Learning",
-        "Unsupervised Learning",
-        "Random Learning",
-        "Manual Learning",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which of these is commonly used for classification?",
-      options: [
-        "Decision Tree",
-        "Text Editor",
-        "Compiler",
-        "File Manager",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "What is training data?",
-      options: [
-        "Data used to train a model",
-        "Data used only for storage",
-        "Deleted data",
-        "Operating system files",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "What does AI primarily attempt to simulate?",
-      options: [
-        "Human intelligence",
-        "Computer hardware",
-        "Internet speed",
-        "File storage",
-      ],
-      answer: 0,
-    },
-  ],
-
-
-  DBMS: [
-    {
-      question:
-        "What does DBMS stand for?",
-      options: [
-        "Database Management System",
-        "Data Backup Management Software",
-        "Database Machine System",
-        "Data Management Service",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which language is commonly used to query relational databases?",
-      options: [
-        "HTML",
-        "SQL",
-        "CSS",
-        "XML",
-      ],
-      answer: 1,
-    },
-
-    {
-      question:
-        "What is a primary key?",
-      options: [
-        "A unique identifier for a record",
-        "A password",
-        "A database backup",
-        "A table name",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which of these is a relational database?",
-      options: [
-        "MySQL",
-        "Photoshop",
-        "Chrome",
-        "Windows",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "What is a table made up of?",
-      options: [
-        "Rows and columns",
-        "Only images",
-        "Only files",
-        "Only keys",
-      ],
-      answer: 0,
-    },
-  ],
-
-
-  DSA: [
-    {
-      question:
-        "What does DSA stand for?",
-      options: [
-        "Data Structure and Algorithms",
-        "Data System Application",
-        "Digital Software Architecture",
-        "Database Structure Application",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which data structure follows FIFO?",
-      options: [
-        "Stack",
-        "Queue",
-        "Tree",
-        "Graph",
-      ],
-      answer: 1,
-    },
-
-    {
-      question:
-        "Which data structure follows LIFO?",
-      options: [
-        "Queue",
-        "Stack",
-        "Array",
-        "Graph",
-      ],
-      answer: 1,
-    },
-
-    {
-      question:
-        "Which data structure contains nodes connected by edges?",
-      options: [
-        "Graph",
-        "Array",
-        "Stack",
-        "Queue",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which algorithm is commonly used for sorting?",
-      options: [
-        "Bubble Sort",
-        "Print",
-        "Input",
-        "Compile",
-      ],
-      answer: 0,
-    },
-  ],
-
-
-  "Data Structure": [
-    {
-      question:
-        "Which data structure follows LIFO?",
-      options: [
-        "Queue",
-        "Stack",
-        "Array",
-        "Graph",
-      ],
-      answer: 1,
-    },
-
-    {
-      question:
-        "Which data structure follows FIFO?",
-      options: [
-        "Stack",
-        "Queue",
-        "Tree",
-        "Graph",
-      ],
-      answer: 1,
-    },
-
-    {
-      question:
-        "Which structure stores data using key-value pairs?",
-      options: [
-        "Dictionary",
-        "Stack",
-        "Queue",
-        "Array",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which structure is hierarchical?",
-      options: [
-        "Tree",
-        "Queue",
-        "Stack",
-        "Array",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which structure consists of nodes and edges?",
-      options: [
-        "Graph",
-        "Stack",
-        "Queue",
-        "String",
-      ],
-      answer: 0,
-    },
-  ],
-
-
-  SPM: [
-    {
-      question:
-        "What does SPM stand for?",
-      options: [
-        "Software Project Management",
-        "System Programming Method",
-        "Software Process Machine",
-        "System Project Model",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "What is project planning?",
-      options: [
-        "Defining project activities and resources",
-        "Deleting project files",
-        "Installing software",
-        "Writing only code",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "What is project estimation?",
-      options: [
-        "Estimating time, cost and resources",
-        "Writing documentation only",
-        "Testing hardware",
-        "Creating passwords",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "What is a project schedule?",
-      options: [
-        "A timeline of project activities",
-        "A database table",
-        "A programming language",
-        "A network protocol",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Risk management is used to:",
-      options: [
-        "Identify and manage possible project risks",
-        "Delete all project data",
-        "Create user accounts",
-        "Install an operating system",
-      ],
-      answer: 0,
-    },
-  ],
-
-
-  "Software Project Management": [
-    {
-      question:
-        "What is the main purpose of software project management?",
-      options: [
-        "To plan and control software projects",
-        "To design computer hardware",
-        "To browse websites",
-        "To manage only databases",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which is an important project constraint?",
-      options: [
-        "Time",
-        "Keyboard",
-        "Monitor",
-        "Mouse",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "What is project estimation?",
-      options: [
-        "Estimating project resources and effort",
-        "Writing HTML",
-        "Installing drivers",
-        "Creating images",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "What is risk management?",
-      options: [
-        "Managing possible project risks",
-        "Deleting source code",
-        "Creating websites",
-        "Formatting disks",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "A project schedule mainly describes:",
-      options: [
-        "When project activities will happen",
-        "Computer specifications",
-        "Database passwords",
-        "Programming syntax",
-      ],
-      answer: 0,
-    },
-  ],
-
-
-  CN: [
-    {
-      question:
-        "What does CN stand for?",
-      options: [
-        "Computer Network",
-        "Computer Number",
-        "Central Network",
-        "Control Node",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which protocol is used for web communication?",
-      options: [
-        "HTTP",
-        "FTP",
-        "SMTP",
-        "SSH",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "What does IP stand for?",
-      options: [
-        "Internet Protocol",
-        "Internal Process",
-        "Internet Program",
-        "Input Protocol",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which device connects different networks?",
-      options: [
-        "Router",
-        "Keyboard",
-        "Monitor",
-        "Printer",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which protocol is used to send email?",
-      options: [
-        "SMTP",
-        "HTTP",
-        "FTP",
-        "DNS",
-      ],
-      answer: 0,
-    },
-  ],
-
-
-  "Cloud Computing": [
-    {
-      question:
-        "What is cloud computing?",
-      options: [
-        "Delivery of computing services over the internet",
-        "Only local file storage",
-        "A programming language",
-        "A computer monitor",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which is an example of cloud storage?",
-      options: [
-        "Google Drive",
-        "Keyboard",
-        "CPU",
-        "RAM",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "What does SaaS stand for?",
-      options: [
-        "Software as a Service",
-        "System as a Software",
-        "Storage as a System",
-        "Software and System",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which is a cloud service provider?",
-      options: [
-        "AWS",
-        "Notepad",
-        "Windows Explorer",
-        "Calculator",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Cloud services can be accessed through:",
-      options: [
-        "The internet",
-        "Only USB",
-        "Only keyboard",
-        "Only printer",
-      ],
-      answer: 0,
-    },
-  ],
-
-
-  OS: [
-    {
-      question:
-        "What does OS stand for?",
-      options: [
-        "Operating System",
-        "Open Software",
-        "Operating Service",
-        "Online System",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which is an operating system?",
-      options: [
-        "Windows",
-        "HTML",
-        "MySQL",
-        "Chrome",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "What does an operating system manage?",
-      options: [
-        "Computer resources",
-        "Only websites",
-        "Only databases",
-        "Only images",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which is responsible for process management?",
-      options: [
-        "Operating System",
-        "Keyboard",
-        "Monitor",
-        "Printer",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        "Which is a mobile operating system?",
-      options: [
-        "Android",
-        "Python",
-        "MySQL",
-        "HTML",
-      ],
-      answer: 0,
-    },
-  ],
-};
 
 
 // =====================================================
@@ -781,157 +151,85 @@ function getSubjectName(item) {
 
 
 // =====================================================
-// GET QUESTIONS FOR SUBJECT
+// QUIZ QUESTION HISTORY
 // =====================================================
 
-function getQuestionsForSubject(subject) {
+const normalizeQuestionText = (value) => {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[^a-z0-9 ]/gi, "")
+    .trim();
+};
 
-  const cleanSubject = normalizeSubjectName(subject);
-
-  if (!cleanSubject) {
-    return [];
-  }
-
-  // Exact match
-  if (QUESTION_BANK[cleanSubject]) {
-    return QUESTION_BANK[cleanSubject];
-  }
-
-  // Case-insensitive match
-  const matchingKey = Object.keys(QUESTION_BANK)
-    .find(
-      (key) =>
-        key.toLowerCase() === cleanSubject.toLowerCase()
+const getPreviousQuizQuestions = () => {
+  try {
+    const storageKey = getUserStorageKey(
+      QUIZ_QUESTION_HISTORY_BASE_KEY
     );
 
-  if (matchingKey) {
-    return QUESTION_BANK[matchingKey];
+    if (!storageKey) {
+      return [];
+    }
+
+    const saved = localStorage.getItem(storageKey);
+    const parsed = saved ? JSON.parse(saved) : [];
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .filter(
+        (question) =>
+          typeof question === "string" &&
+          question.trim()
+      )
+      .slice(-30);
+  } catch {
+    return [];
   }
+};
 
-  // Subject aliases
-  const lower = cleanSubject.toLowerCase();
+const saveQuizQuestionHistory = (questions) => {
+  try {
+    const storageKey = getUserStorageKey(
+      QUIZ_QUESTION_HISTORY_BASE_KEY
+    );
 
-  if (
-    lower.includes("python")
-  ) {
-    return QUESTION_BANK.Python;
+    if (!storageKey || !Array.isArray(questions)) {
+      return;
+    }
+
+    const oldQuestions = getPreviousQuizQuestions();
+    const combined = [...oldQuestions, ...questions];
+    const seen = new Set();
+    const unique = [];
+
+    for (const question of combined) {
+      const text = String(question || "").trim();
+      const normalized = normalizeQuestionText(text);
+
+      if (!normalized || seen.has(normalized)) {
+        continue;
+      }
+
+      seen.add(normalized);
+      unique.push(text);
+    }
+
+    // Keep a useful history without making localStorage enormous.
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify(unique.slice(-200))
+    );
+  } catch (error) {
+    console.warn(
+      "Quiz question history save failed:",
+      error
+    );
   }
-
-  if (
-    lower.includes("artificial") ||
-    lower === "ai" ||
-    lower.includes("aiml") ||
-    lower.includes("machine learning")
-  ) {
-    return QUESTION_BANK.AI;
-  }
-
-  if (
-    lower.includes("data structure") ||
-    lower === "dsa"
-  ) {
-    return QUESTION_BANK["Data Structure"];
-  }
-
-  if (
-    lower.includes("project management") ||
-    lower === "spm"
-  ) {
-    return QUESTION_BANK[
-      "Software Project Management"
-    ];
-  }
-
-  if (
-    lower.includes("network") ||
-    lower === "cn"
-  ) {
-    return QUESTION_BANK.CN;
-  }
-
-  if (
-    lower.includes("cloud")
-  ) {
-    return QUESTION_BANK["Cloud Computing"];
-  }
-
-  if (
-    lower === "dbms" ||
-    lower.includes("database")
-  ) {
-    return QUESTION_BANK.DBMS;
-  }
-
-  if (
-    lower === "os" ||
-    lower.includes("operating system")
-  ) {
-    return QUESTION_BANK.OS;
-  }
-
-  // Generic fallback
-  return [
-    {
-      question:
-        `Which statement is related to ${cleanSubject}?`,
-      options: [
-        `Studying ${cleanSubject}`,
-        "Playing a game",
-        "Watching a movie",
-        "None of these",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        `Why is ${cleanSubject} important for students?`,
-      options: [
-        "It helps improve subject knowledge",
-        "It deletes files",
-        "It shuts down the computer",
-        "It has no purpose",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        `What is a good way to learn ${cleanSubject}?`,
-      options: [
-        "Practice and revision",
-        "Never study",
-        "Ignore the topic",
-        "Avoid examples",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        `Which approach is useful while learning ${cleanSubject}?`,
-      options: [
-        "Understand concepts and practice",
-        "Memorize without understanding",
-        "Skip all exercises",
-        "Avoid revision",
-      ],
-      answer: 0,
-    },
-
-    {
-      question:
-        `What can improve your performance in ${cleanSubject}?`,
-      options: [
-        "Regular practice",
-        "Skipping classes",
-        "Avoiding questions",
-        "Never revising",
-      ],
-      answer: 0,
-    },
-  ];
-}
+};
 
 
 // =====================================================
@@ -988,6 +286,9 @@ function Quizzes() {
   const [quizCompleted, setQuizCompleted] =
     useState(false);
 
+  const [quizGenerating, setQuizGenerating] =
+    useState(false);
+
 
   // ===================================================
   // RESULTS STATE
@@ -1018,10 +319,20 @@ function Quizzes() {
 
     try {
 
-      const saved =
-        localStorage.getItem(
-          SUBJECTS_STORAGE_KEY
+      const storageKey =
+        getUserStorageKey(
+          SUBJECTS_STORAGE_BASE_KEY
         );
+
+      if (!storageKey) {
+        setSubjects([]);
+        setSubject("");
+        setSubjectsLoading(false);
+        return;
+      }
+
+      const saved =
+        localStorage.getItem(storageKey);
 
 
       if (!saved) {
@@ -1110,10 +421,18 @@ function Quizzes() {
 
     try {
 
-      const saved =
-        localStorage.getItem(
-          QUIZ_RESULTS_STORAGE_KEY
+      const storageKey =
+        getUserStorageKey(
+          QUIZ_RESULTS_BASE_KEY
         );
+
+      if (!storageKey) {
+        setResults([]);
+        return;
+      }
+
+      const saved =
+        localStorage.getItem(storageKey);
 
 
       if (!saved) {
@@ -1136,7 +455,32 @@ function Quizzes() {
       }
 
 
-      setResults(parsed);
+      
+      const validResults =
+        parsed.filter((result) => {
+          const resultScore = Number(result?.score);
+          const resultTotal = Number(
+            result?.total ??
+            result?.totalQuestions ??
+            0
+          );
+
+          return (
+            Number.isFinite(resultScore) &&
+            Number.isFinite(resultTotal) &&
+            resultTotal >= 1 &&
+            resultScore >= 0 &&
+            resultScore <= resultTotal
+          );
+        });
+
+      // Remove legacy invalid records such as 6/5 and 120%.
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify(validResults)
+      );
+
+      setResults(validResults);
 
     } catch (err) {
 
@@ -1190,15 +534,33 @@ function Quizzes() {
   useEffect(() => {
 
     const handleSubjectsUpdated = () => {
-
       loadSubjects();
+    };
 
+    const handleAuthChanged = () => {
+      loadSubjects();
+      loadResults();
     };
 
 
     window.addEventListener(
       "learnova:subjects-updated",
       handleSubjectsUpdated
+    );
+
+    window.addEventListener(
+      "learnova:user-updated",
+      handleAuthChanged
+    );
+
+    window.addEventListener(
+      "learnova:auth-changed",
+      handleAuthChanged
+    );
+
+    window.addEventListener(
+      "focus",
+      handleAuthChanged
     );
 
 
@@ -1209,16 +571,37 @@ function Quizzes() {
         handleSubjectsUpdated
       );
 
+      window.removeEventListener(
+        "learnova:user-updated",
+        handleAuthChanged
+      );
+
+      window.removeEventListener(
+        "learnova:auth-changed",
+        handleAuthChanged
+      );
+
+      window.removeEventListener(
+        "focus",
+        handleAuthChanged
+      );
+
     };
 
-  }, [loadSubjects]);
+  }, [loadSubjects, loadResults]);
 
 
   // =====================================================
-  // GENERATE QUIZ
+  // GENERATE AI QUIZ
+  //
+  // Questions are generated by local Ollama through:
+  // POST /api/ai/quiz
+  //
+  // Questions are generated dynamically by Ollama.
+  // Previous question history is sent to prevent repeats.
   // =====================================================
 
-  const generateQuiz = () => {
+  const generateQuiz = async () => {
 
     setError("");
 
@@ -1233,52 +616,177 @@ function Quizzes() {
     }
 
 
-    const availableQuestions =
-      getQuestionsForSubject(subject);
+    const cleanTopic =
+      String(topic || "").trim();
 
 
-    if (
-      !availableQuestions.length
-    ) {
+    if (!cleanTopic) {
 
       setError(
-        "No questions are available for this subject yet."
+        "Please enter a topic for the quiz."
       );
 
       return;
     }
 
 
-    // Always generate exactly 5 questions
-    const questions = [
-      ...availableQuestions,
-    ];
-
-
-    // Shuffle questions
-    questions.sort(
-      () => Math.random() - 0.5
-    );
-
-
-    // Take first 5
-    const selectedQuestions =
-      questions.slice(0, 5);
-
-
-    setQuizQuestions(
-      selectedQuestions
-    );
-
+    setQuizGenerating(true);
+    setQuizQuestions([]);
     setCurrentQuestion(0);
     setSelectedAnswer(null);
     setScore(0);
-
-    setQuizStarted(true);
+    setQuizStarted(false);
     setQuizCompleted(false);
 
-  };
 
+    try {
+
+      console.log("🧠 Generating quiz with Ollama...");
+      console.log("Subject:", subject);
+      console.log("Topic:", cleanTopic);
+      console.log("Difficulty:", difficulty);
+
+
+      const response =
+        await fetch(
+          "http://localhost:5000/api/ai/quiz",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              subject,
+              topic: cleanTopic,
+              difficulty,
+              numberOfQuestions: 5,
+              previousQuestions:
+                getPreviousQuizQuestions(),
+            }),
+          }
+        );
+
+
+      let data = {};
+
+      try {
+        data = await response.json();
+      } catch {
+        data = {};
+      }
+
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            `Quiz generation failed (${response.status}).`
+        );
+      }
+
+
+      const generatedQuestions =
+        data?.quiz?.questions;
+
+
+      if (
+        !Array.isArray(generatedQuestions) ||
+        generatedQuestions.length !== 5
+      ) {
+        throw new Error(
+          "Ollama did not return exactly 5 valid questions. Please try again."
+        );
+      }
+
+
+      const validQuestions =
+        generatedQuestions.filter(
+          (question) =>
+            question &&
+            typeof question.question ===
+              "string" &&
+            question.question.trim() &&
+            Array.isArray(question.options) &&
+            question.options.length === 4 &&
+            question.options.every(
+              (option) =>
+                typeof option === "string" &&
+                option.trim()
+            ) &&
+            Number.isInteger(question.answer) &&
+            question.answer >= 0 &&
+            question.answer <= 3
+        );
+
+
+      if (validQuestions.length !== 5) {
+        throw new Error(
+          "Ollama returned an invalid question format. Please generate again."
+        );
+      }
+
+
+      // Remove duplicate question text inside the same quiz.
+      const uniqueQuestions = [];
+      const seen = new Set();
+
+      for (const question of validQuestions) {
+        const key =
+          question.question
+            .trim()
+            .toLowerCase();
+
+        if (!seen.has(key)) {
+          seen.add(key);
+          uniqueQuestions.push(question);
+        }
+      }
+
+
+      if (uniqueQuestions.length !== 5) {
+        throw new Error(
+          "Ollama generated duplicate questions. Please generate again."
+        );
+      }
+
+      saveQuizQuestionHistory(
+        uniqueQuestions.map(
+          (question) => question.question
+        )
+      );
+
+      setQuizQuestions(
+        uniqueQuestions
+      );
+
+      setCurrentQuestion(0);
+      setSelectedAnswer(null);
+      setScore(0);
+      setQuizStarted(true);
+      setQuizCompleted(false);
+
+      console.log("✅ Fresh AI quiz generated.");
+
+    } catch (err) {
+
+      console.error("❌ AI quiz generation error:", err);
+
+      setError(
+        err?.message ||
+          "Unable to generate AI quiz. Make sure Ollama is running."
+      );
+
+      setQuizQuestions([]);
+      setQuizStarted(false);
+
+    } finally {
+
+      setQuizGenerating(false);
+    }
+
+  };
 
   // =====================================================
   // SELECT ANSWER
@@ -1345,8 +853,21 @@ function Quizzes() {
     }
 
 
-    // Quiz finished
-    finishQuiz();
+    // Quiz finished.
+    //
+    // IMPORTANT:
+    // handleAnswer() already updates the score for the
+    // selected answer. Do NOT add the last answer again.
+    //
+    // This prevents impossible scores such as 6/5.
+    // handleAnswer() already counted the selected answer.
+    // Do not add the last answer again.
+    const finalScore = Math.min(
+      Math.max(Number(score) || 0, 0),
+      quizQuestions.length
+    );
+
+    finishQuiz(finalScore);
 
   };
 
@@ -1355,18 +876,25 @@ function Quizzes() {
   // FINISH QUIZ
   // =====================================================
 
-  const finishQuiz = () => {
+  const finishQuiz = async (finalScore) => {
 
-    const finalScore =
-      score;
+    const safeTotal =
+      Math.max(
+        Number(quizQuestions.length) || 0,
+        0
+      );
 
+    const safeScore = Math.min(
+      Math.max(Number(finalScore) || 0, 0),
+      safeTotal
+    );
 
     const percentage =
-      Math.round(
-        (finalScore /
-          quizQuestions.length) *
-          100
-      );
+      safeTotal > 0
+        ? Math.round(
+            (safeScore / safeTotal) * 100
+          )
+        : 0;
 
 
     const newResult = {
@@ -1381,10 +909,10 @@ function Quizzes() {
       difficulty,
 
       score:
-        finalScore,
+        safeScore,
 
       total:
-        quizQuestions.length,
+        safeTotal,
 
       percentage,
 
@@ -1396,37 +924,54 @@ function Quizzes() {
 
     try {
 
-      const saved =
-        localStorage.getItem(
-          QUIZ_RESULTS_STORAGE_KEY
+      const storageKey =
+        getUserStorageKey(
+          QUIZ_RESULTS_BASE_KEY
         );
 
+      const saved =
+        storageKey
+          ? localStorage.getItem(storageKey)
+          : null;
 
       const oldResults =
         saved
           ? JSON.parse(saved)
           : [];
 
+      const validOldResults =
+        Array.isArray(oldResults)
+          ? oldResults.filter((result) => {
+              const oldScore = Number(result?.score);
+              const oldTotal = Number(
+                result?.total ??
+                result?.totalQuestions ??
+                0
+              );
+
+              return (
+                Number.isFinite(oldScore) &&
+                Number.isFinite(oldTotal) &&
+                oldTotal >= 1 &&
+                oldScore >= 0 &&
+                oldScore <= oldTotal
+              );
+            })
+          : [];
 
       const updatedResults = [
         newResult,
-        ...(Array.isArray(oldResults)
-          ? oldResults
-          : []),
+        ...validOldResults,
       ].slice(0, 20);
 
+      if (storageKey) {
+        localStorage.setItem(
+          storageKey,
+          JSON.stringify(updatedResults)
+        );
+      }
 
-      localStorage.setItem(
-        QUIZ_RESULTS_STORAGE_KEY,
-        JSON.stringify(
-          updatedResults
-        )
-      );
-
-
-      setResults(
-        updatedResults
-      );
+      setResults(updatedResults);
 
     } catch (err) {
 
@@ -1435,6 +980,102 @@ function Quizzes() {
         err
       );
 
+    }
+
+
+    // =====================================================
+    // SAVE QUIZ RESULT TO MONGODB
+    // =====================================================
+    //
+    // Backend attaches req.user._id from the JWT.
+    // This keeps quiz results isolated per user.
+    // =====================================================
+
+    try {
+      const token = getAuthToken();
+
+      if (!token) {
+        throw new Error(
+          "Authentication token not found."
+        );
+      }
+
+      const response = await fetch(
+        QUIZ_RESULTS_API_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+
+            Authorization:
+              `Bearer ${token}`,
+          },
+
+          body: JSON.stringify({
+            subject:
+              String(subject || "").trim(),
+
+            topic:
+              String(topic || "General").trim() ||
+              "General",
+
+            difficulty:
+              String(
+                difficulty || "easy"
+              )
+                .trim()
+                .toLowerCase(),
+
+            score:
+              safeScore,
+
+            totalQuestions:
+              safeTotal,
+          }),
+        }
+      );
+
+      let data = {};
+
+      try {
+        data = await response.json();
+      } catch {
+        data = {};
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            `Unable to save quiz result (${response.status}).`
+        );
+      }
+
+      console.log(
+        "✅ Quiz result saved to MongoDB:",
+        data?.result
+      );
+
+      // Analytics can refresh immediately.
+      window.dispatchEvent(
+        new Event(
+          "learnova:quiz-results-updated"
+        )
+      );
+
+    } catch (err) {
+
+      console.error(
+        "❌ MongoDB quiz result save failed:",
+        err
+      );
+
+      setError(
+        `Quiz completed, but Analytics sync failed: ${
+          err?.message ||
+          "Unable to save quiz result."
+        }`
+      );
     }
 
 
@@ -1540,6 +1181,12 @@ function Quizzes() {
             {percentage}% Score
           </h2>
 
+          {error && (
+            <div className="quiz-error">
+              ⚠️ {error}
+            </div>
+          )}
+
 
           <div className="quiz-result-actions">
 
@@ -1557,11 +1204,12 @@ function Quizzes() {
             <button
               type="button"
               className="primary-btn"
-              onClick={() => {
-                handleNewQuiz();
-              }}
+              onClick={generateQuiz}
+              disabled={quizGenerating}
             >
-              🔄 New Quiz
+              {quizGenerating
+                ? "🤖 Generating with Ollama..."
+                : "🔄 New Quiz"}
             </button>
 
           </div>
@@ -2018,11 +1666,15 @@ function Quizzes() {
           disabled={
             subjectsLoading ||
             subjects.length === 0 ||
-            !subject
+            !subject ||
+            !String(topic || "").trim() ||
+            quizGenerating
           }
         >
 
-          ✨ Generate 5 Questions
+          {quizGenerating
+            ? "🤖 Generating with Ollama..."
+            : "✨ Generate 5 Questions"}
 
         </button>
 

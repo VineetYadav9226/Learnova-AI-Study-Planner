@@ -1,21 +1,59 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+// =====================================================
+// STORAGE KEY
+// =====================================================
+
+const SUBJECTS_STORAGE_KEY = "learnova_subjects";
+
+// =====================================================
+// GET CURRENT SUBJECTS
+// =====================================================
+
+function getCurrentSubjects() {
+  try {
+    const saved = localStorage.getItem(
+      SUBJECTS_STORAGE_KEY
+    );
+
+    if (!saved) {
+      return [];
+    }
+
+    const parsed = JSON.parse(saved);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    const names = parsed
+      .map((item) =>
+        String(item?.name || "").trim()
+      )
+      .filter(Boolean);
+
+    // Remove duplicate subjects
+    return names.filter(
+      (name, index, array) =>
+        index ===
+        array.findIndex(
+          (item) =>
+            item.toLowerCase() ===
+            name.toLowerCase()
+        )
+    );
+  } catch (error) {
+    console.error(
+      "Unable to load subjects:",
+      error
+    );
+
+    return [];
+  }
+}
 
 // =====================================================
 // CREATE PLAN MODAL
-// =====================================================
-// Ye component 2 kaam karta hai:
-//
-// 1. New Study Task create karna
-// 2. Existing Study Task edit karna
-//
-// editingTask = null
-//       ↓
-// Create mode
-//
-// editingTask = task
-//       ↓
-// Edit mode
 // =====================================================
 
 function CreatePlanModal({
@@ -24,16 +62,17 @@ function CreatePlanModal({
   editingTask = null,
   onUpdateTask,
 }) {
+  // ===================================================
+  // CURRENT SUBJECTS
+  // ===================================================
 
+  const [subjects, setSubjects] = useState(
+    () => getCurrentSubjects()
+  );
 
-  // =====================================================
-  // FORM INITIAL VALUES
-  // =====================================================
-  // Agar edit mode hai to existing task ki values
-  // form me directly load hongi.
-  //
-  // Agar new task hai to fields empty rahengi.
-  // =====================================================
+  // ===================================================
+  // FORM STATES
+  // ===================================================
 
   const [title, setTitle] = useState(
     editingTask?.title ?? ""
@@ -47,144 +86,181 @@ function CreatePlanModal({
     editingTask?.time ?? ""
   );
 
+  // ===================================================
+  // LISTEN FOR SUBJECT UPDATES
+  // ===================================================
 
-  // =====================================================
+  useEffect(() => {
+    const refreshSubjects = () => {
+      setSubjects(getCurrentSubjects());
+    };
+
+    window.addEventListener(
+      "learnova:subjects-updated",
+      refreshSubjects
+    );
+
+    window.addEventListener(
+      "storage",
+      refreshSubjects
+    );
+
+    window.addEventListener(
+      "focus",
+      refreshSubjects
+    );
+
+    return () => {
+      window.removeEventListener(
+        "learnova:subjects-updated",
+        refreshSubjects
+      );
+
+      window.removeEventListener(
+        "storage",
+        refreshSubjects
+      );
+
+      window.removeEventListener(
+        "focus",
+        refreshSubjects
+      );
+    };
+  }, []);
+
+  // ===================================================
   // FORM SUBMIT
-  // =====================================================
+  // ===================================================
 
   const handleSubmit = (e) => {
-
     e.preventDefault();
 
-
-    // ===================================================
-    // VALIDATION
-    // ===================================================
+    // -------------------------------------------------
+    // TITLE VALIDATION
+    // -------------------------------------------------
 
     if (!title.trim()) {
       alert("Please enter task title.");
       return;
     }
 
-    if (!subject) {
+    // -------------------------------------------------
+    // SUBJECT VALIDATION
+    // -------------------------------------------------
+
+    if (!subject.trim()) {
       alert("Please select a subject.");
       return;
     }
+
+    // -------------------------------------------------
+    // MAKE SURE SUBJECT IS CURRENT
+    // -------------------------------------------------
+
+    const currentSubject = subjects.find(
+      (item) =>
+        item.toLowerCase() ===
+        subject.trim().toLowerCase()
+    );
+
+    if (!currentSubject) {
+      alert(
+        "Please select a subject from the current subject list."
+      );
+      return;
+    }
+
+    // -------------------------------------------------
+    // TIME VALIDATION
+    // -------------------------------------------------
 
     if (!time.trim()) {
       alert("Please enter study time.");
       return;
     }
 
-
-    // ===================================================
+    // =================================================
     // EDIT EXISTING TASK
-    // ===================================================
+    // =================================================
 
     if (editingTask) {
-
       const updatedTask = {
         ...editingTask,
 
         title: title.trim(),
 
-        subject: subject,
+        subject: currentSubject,
 
         time: time.trim(),
       };
 
-
-      // App.jsx ke updateTask function ko call
       onUpdateTask(updatedTask);
 
       return;
     }
 
-
-    // ===================================================
+    // =================================================
     // CREATE NEW TASK
-    // ===================================================
+    // =================================================
 
     const newTask = {
-
       title: title.trim(),
 
-      subject: subject,
+      subject: currentSubject,
 
       time: time.trim(),
 
       completed: false,
     };
 
-
-    // App.jsx ke addTask function ko call
     onAddTask(newTask);
-
   };
 
-
-  // =====================================================
+  // ===================================================
   // CLOSE MODAL
-  // =====================================================
+  // ===================================================
 
   const handleClose = () => {
-
     onClose();
-
   };
 
-
-  // =====================================================
+  // ===================================================
   // MODAL UI
-  // =====================================================
+  // ===================================================
 
   return (
-
     <div
       className="modal-overlay"
       onClick={handleClose}
     >
-
-
       {/* =================================================
-         MODAL BOX
-
-         Modal ke andar click karne par modal close nahi hoga.
+          MODAL BOX
          ================================================= */}
 
       <div
         className="create-plan-modal"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) =>
+          e.stopPropagation()
+        }
       >
-
-
         {/* =================================================
-           MODAL HEADER
+            HEADER
            ================================================= */}
 
         <div className="modal-header">
-
           <div>
-
             <h2>
               {editingTask
                 ? "Edit Study Task"
                 : "Create New Study Task"}
             </h2>
 
-
             <p>
               {editingTask
                 ? "Update your study task details."
                 : "Add a new task to your study plan."}
             </p>
-
           </div>
-
-
-          {/* =================================================
-             CLOSE BUTTON
-             ================================================= */}
 
           <button
             type="button"
@@ -194,27 +270,21 @@ function CreatePlanModal({
           >
             ×
           </button>
-
         </div>
 
-
         {/* =================================================
-           FORM
+            FORM
            ================================================= */}
 
         <form onSubmit={handleSubmit}>
-
-
           {/* =================================================
-             TASK TITLE
+              TASK TITLE
              ================================================= */}
 
           <div className="form-group">
-
             <label htmlFor="task-title">
               Task Title
             </label>
-
 
             <input
               id="task-title"
@@ -226,20 +296,16 @@ function CreatePlanModal({
               }
               autoFocus
             />
-
           </div>
 
-
           {/* =================================================
-             SUBJECT
+              SUBJECT
              ================================================= */}
 
           <div className="form-group">
-
             <label htmlFor="task-subject">
               Subject
             </label>
-
 
             <select
               id="task-subject"
@@ -247,55 +313,51 @@ function CreatePlanModal({
               onChange={(e) =>
                 setSubject(e.target.value)
               }
+              disabled={
+                subjects.length === 0
+              }
+              required
             >
-
               <option value="">
                 Select Subject
               </option>
 
-              <option value="Python">
-                Python
-              </option>
-
-              <option value="AI">
-                AI
-              </option>
-
-              <option value="SPM">
-                SPM
-              </option>
-
-              <option value="DBMS">
-                DBMS
-              </option>
-
-              <option value="DSA">
-                DSA
-              </option>
-
-              <option value="OS">
-                OS
-              </option>
-
-              <option value="Revision">
-                Revision
-              </option>
-
+              {subjects.map((item) => (
+                <option
+                  key={item}
+                  value={item}
+                >
+                  {item}
+                </option>
+              ))}
             </select>
 
+            {/* ------------------------------------------------
+                EMPTY SUBJECT MESSAGE
+               ------------------------------------------------ */}
+
+            {subjects.length === 0 && (
+              <small
+                style={{
+                  display: "block",
+                  marginTop: "8px",
+                  color: "#ef4444",
+                }}
+              >
+                No subjects found. Please
+                create a subject first.
+              </small>
+            )}
           </div>
 
-
           {/* =================================================
-             STUDY TIME
+              STUDY TIME
              ================================================= */}
 
           <div className="form-group">
-
             <label htmlFor="study-time">
               Study Time
             </label>
-
 
             <input
               id="study-time"
@@ -306,18 +368,14 @@ function CreatePlanModal({
                 setTime(e.target.value)
               }
             />
-
           </div>
 
-
           {/* =================================================
-             MODAL ACTIONS
+              ACTIONS
              ================================================= */}
 
           <div className="modal-actions">
-
-
-            {/* CANCEL BUTTON */}
+            {/* CANCEL */}
 
             <button
               type="button"
@@ -327,30 +385,24 @@ function CreatePlanModal({
               Cancel
             </button>
 
-
-            {/* ADD / UPDATE BUTTON */}
+            {/* ADD / UPDATE */}
 
             <button
               type="submit"
               className="add-task-btn"
+              disabled={
+                subjects.length === 0
+              }
             >
-
               {editingTask
                 ? "✓ Update Task"
                 : "+ Add Task"}
-
             </button>
-
           </div>
-
         </form>
-
       </div>
-
     </div>
-
   );
 }
-
 
 export default CreatePlanModal;

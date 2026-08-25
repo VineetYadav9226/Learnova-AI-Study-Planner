@@ -1,338 +1,1152 @@
 import { useEffect, useMemo, useState } from "react";
 
-const SUBJECTS = ["All", "Python", "AI", "SPM", "DBMS", "DSA", "OS"];
-const STORAGE_KEY = "learnova_notes";
-const createId = () =>
-  `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+// =====================================================
+// LEARNOVA AI - NOTES
+// =====================================================
+//
+// IMPORTANT:
+// Subjects are NOT hard-coded here.
+//
+// Current subjects come ONLY from:
+// user-specific localStorage -> "learnova_subjects_<USER_ID>"
+//
+// Therefore:
+// - Old subjects will not appear in dropdowns.
+// - Old subjects will not appear in subject filters.
+// - Old notes belonging to deleted subjects are hidden.
+// - Adding/deleting a subject on Subjects page updates Notes.
+// =====================================================
 
-const getInitialNotes = () => {
+const SUBJECTS_STORAGE_BASE_KEY = "learnova_subjects";
+const NOTES_STORAGE_BASE_KEY = "learnova_notes";
+
+
+
+// =====================================================
+// CURRENT USER STORAGE HELPERS
+// =====================================================
+
+const getCurrentUser = () => {
+  const possibleKeys = [
+    "user",
+    "currentUser",
+    "learnova_user",
+    "authUser",
+    "loggedInUser",
+    "userData",
+  ];
+
+  for (const key of possibleKeys) {
+    try {
+      const value = localStorage.getItem(key);
+
+      if (!value) {
+        continue;
+      }
+
+      const parsed = JSON.parse(value);
+
+      if (parsed && typeof parsed === "object") {
+        return parsed;
+      }
+    } catch {
+      // Ignore invalid JSON.
+    }
+  }
+
+  return null;
+};
+
+const getUserIdentifier = () => {
+  const user = getCurrentUser();
+
+  if (!user) {
+    return null;
+  }
+
+  const identifier =
+    user._id ||
+    user.id ||
+    user.userId ||
+    user.email;
+
+  return identifier ? String(identifier) : null;
+};
+
+const getUserStorageKey = (baseKey) => {
+  const userId = getUserIdentifier();
+
+  if (!userId) {
+    return null;
+  }
+
+  return `${baseKey}_${userId}`;
+};
+
+// =====================================================
+// GET CURRENT SUBJECTS
+// =====================================================
+
+const getCurrentSubjects = () => {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return [];
+    const storageKey =
+      getUserStorageKey(
+        SUBJECTS_STORAGE_BASE_KEY
+      );
+
+    if (!storageKey) {
+      return [];
+    }
+
+    const saved = localStorage.getItem(
+      storageKey
+    );
+
+    if (!saved) {
+      return [];
+    }
 
     const parsed = JSON.parse(saved);
-    return Array.isArray(parsed) ? parsed : [];
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    const names = parsed
+      .map((subject) =>
+        String(subject?.name || "").trim()
+      )
+      .filter(Boolean);
+
+    // Remove duplicate subject names.
+    return names.filter(
+      (name, index, array) =>
+        index ===
+        array.findIndex(
+          (item) =>
+            item.toLowerCase() ===
+            name.toLowerCase()
+        )
+    );
   } catch (error) {
-    console.error("Notes loading error:", error);
+    console.error(
+      "Unable to load current subjects:",
+      error
+    );
+
     return [];
   }
 };
 
+
+// =====================================================
+// CREATE ID
+// =====================================================
+
+const createId = () =>
+  `${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+
+
+// =====================================================
+// LOAD NOTES
+// =====================================================
+
+const getInitialNotes = () => {
+  try {
+    const storageKey =
+      getUserStorageKey(
+        NOTES_STORAGE_BASE_KEY
+      );
+
+    if (!storageKey) {
+      return [];
+    }
+
+    const saved = localStorage.getItem(
+      storageKey
+    );
+
+    if (!saved) {
+      return [];
+    }
+
+    const parsed = JSON.parse(saved);
+
+    return Array.isArray(parsed)
+      ? parsed
+      : [];
+  } catch (error) {
+    console.error(
+      "Notes loading error:",
+      error
+    );
+
+    return [];
+  }
+};
+
+
+// =====================================================
+// NOTES COMPONENT
+// =====================================================
+
 function Notes() {
-  const [notes, setNotes] = useState(getInitialNotes);
-  const [search, setSearch] = useState("");
-  const [subjectFilter, setSubjectFilter] = useState("All");
-  const [selectedNote, setSelectedNote] = useState(null);
-  const [showEditor, setShowEditor] = useState(false);
-  const [error, setError] = useState("");
 
-  const [form, setForm] = useState({
-    title: "",
-    subject: "Python",
-    content: "",
-  });
+  // ===================================================
+  // NOTES
+  // ===================================================
 
-  // Save notes.
+  const [notes, setNotes] =
+    useState(getInitialNotes);
+
+
+  // ===================================================
+  // CURRENT SUBJECTS
+  // ===================================================
+
+  const [
+    currentSubjects,
+    setCurrentSubjects,
+  ] = useState(() =>
+    getCurrentSubjects()
+  );
+
+
+  // ===================================================
+  // SEARCH / FILTER
+  // ===================================================
+
+  const [search, setSearch] =
+    useState("");
+
+  const [subjectFilter, setSubjectFilter] =
+    useState("All");
+
+
+  // ===================================================
+  // EDITOR
+  // ===================================================
+
+  const [selectedNote, setSelectedNote] =
+    useState(null);
+
+  const [showEditor, setShowEditor] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+
+  // ===================================================
+  // FORM
+  // ===================================================
+
+  const [form, setForm] =
+    useState({
+      title: "",
+      subject: "",
+      content: "",
+    });
+
+
+  // ===================================================
+  // SAVE NOTES
+  // ===================================================
+
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
+      const storageKey =
+        getUserStorageKey(
+          NOTES_STORAGE_BASE_KEY
+        );
+
+      if (!storageKey) {
+        return;
+      }
+
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify(notes)
+      );
     } catch (error) {
-      console.error("Notes saving error:", error);
+      console.error(
+        "Notes saving error:",
+        error
+      );
     }
   }, [notes]);
 
- const filteredNotes = useMemo(() => {
-    const query = search.trim().toLowerCase();
 
-    return notes
+  // ===================================================
+  // SYNC CURRENT SUBJECTS
+  // ===================================================
+  //
+  // Subjects page uses:
+  // localStorage -> learnova_subjects
+  //
+  // We refresh when:
+  // 1. Subjects are changed in another tab
+  // 2. User returns to Notes
+  // 3. Subjects page dispatches our custom event
+  // ===================================================
+
+  useEffect(() => {
+
+    const syncSubjects = () => {
+      const nextSubjects =
+        getCurrentSubjects();
+
+      setCurrentSubjects(
+        nextSubjects
+      );
+    };
+
+    const syncUserData = () => {
+      setCurrentSubjects(
+        getCurrentSubjects()
+      );
+      setNotes(
+        getInitialNotes()
+      );
+      setSubjectFilter("All");
+      setSelectedNote(null);
+      setShowEditor(false);
+    };
+
+
+    window.addEventListener(
+      "storage",
+      syncSubjects
+    );
+
+    window.addEventListener(
+      "focus",
+      syncSubjects
+    );
+
+    window.addEventListener(
+      "learnova:subjects-updated",
+      syncSubjects
+    );
+
+    window.addEventListener(
+      "learnova:user-updated",
+      syncUserData
+    );
+
+    window.addEventListener(
+      "learnova:auth-changed",
+      syncUserData
+    );
+
+
+    return () => {
+
+      window.removeEventListener(
+        "storage",
+        syncSubjects
+      );
+
+      window.removeEventListener(
+        "focus",
+        syncSubjects
+      );
+
+      window.removeEventListener(
+        "learnova:subjects-updated",
+        syncSubjects
+      );
+
+    };
+
+  }, []);
+
+
+  // ===================================================
+  // KEEP FILTER VALID
+  // ===================================================
+  //
+  // If user deletes the currently selected subject,
+  // automatically return to "All".
+  // ===================================================
+
+  useEffect(() => {
+
+    if (
+      subjectFilter !== "All" &&
+      !currentSubjects.some(
+        (subject) =>
+          subject.toLowerCase() ===
+          subjectFilter.toLowerCase()
+      )
+    ) {
+      const timerId =
+        window.setTimeout(() => {
+          setSubjectFilter("All");
+        }, 0);
+
+      return () =>
+        window.clearTimeout(timerId);
+    }
+
+    return undefined;
+
+  }, [
+    currentSubjects,
+    subjectFilter,
+  ]);
+
+
+  // ===================================================
+  // CURRENT NOTES ONLY
+  // ===================================================
+  //
+  // Old notes can still exist in localStorage.
+  // They are intentionally hidden when their subject
+  // is no longer present in the current Subjects page.
+  // ===================================================
+
+  const currentNotes = useMemo(() => {
+
+    return notes.filter((note) => {
+
+      const noteSubject =
+        String(
+          note?.subject || ""
+        ).trim();
+
+      if (!noteSubject) {
+        return false;
+      }
+
+      return currentSubjects.some(
+        (subject) =>
+          subject.toLowerCase() ===
+          noteSubject.toLowerCase()
+      );
+
+    });
+
+  }, [
+    notes,
+    currentSubjects,
+  ]);
+
+
+  // ===================================================
+  // FILTERED NOTES
+  // ===================================================
+
+  const filteredNotes = useMemo(() => {
+
+    const query =
+      search.trim().toLowerCase();
+
+    return currentNotes
       .filter((note) => {
-        const title = String(note.title || "").toLowerCase();
-        const content = String(note.content || "").toLowerCase();
+
+        const title =
+          String(
+            note?.title || ""
+          ).toLowerCase();
+
+        const content =
+          String(
+            note?.content || ""
+          ).toLowerCase();
+
+        const noteSubject =
+          String(
+            note?.subject || ""
+          ).toLowerCase();
 
         const matchesSubject =
           subjectFilter === "All" ||
-          note.subject === subjectFilter;
+          noteSubject ===
+            subjectFilter.toLowerCase();
 
         const matchesSearch =
           !query ||
           title.includes(query) ||
-          content.includes(query);
+          content.includes(query) ||
+          noteSubject.includes(query);
 
-        return matchesSubject && matchesSearch;
+        return (
+          matchesSubject &&
+          matchesSearch
+        );
       })
       .sort(
         (a, b) =>
-          new Date(b.updatedAt || b.createdAt) -
-          new Date(a.updatedAt || a.createdAt)
+          new Date(
+            b?.updatedAt ||
+              b?.createdAt ||
+              0
+          ) -
+          new Date(
+            a?.updatedAt ||
+              a?.createdAt ||
+              0
+          )
       );
-  }, [notes, search, subjectFilter]);
+
+  }, [
+    currentNotes,
+    search,
+    subjectFilter,
+  ]);
+
+
+  // ===================================================
+  // CURRENT SUBJECT STATS
+  // ===================================================
+
+  const subjectCount =
+    new Set(
+      currentNotes
+        .map((note) =>
+          String(
+            note?.subject || ""
+          )
+            .trim()
+            .toLowerCase()
+        )
+        .filter(Boolean)
+    ).size;
+
+
+  // ===================================================
+  // CREATE NOTE
+  // ===================================================
 
   const openCreate = () => {
+
     setError("");
+
     setForm({
       title: "",
-      subject: "Python",
+      subject:
+        currentSubjects[0] || "",
       content: "",
     });
+
     setSelectedNote(null);
     setShowEditor(true);
+
   };
+
+
+  // ===================================================
+  // EDIT NOTE
+  // ===================================================
 
   const openEdit = (note) => {
+
     setError("");
+
     setForm({
-      title: note.title || "",
-      subject: note.subject || "Python",
-      content: note.content || "",
+      title:
+        note?.title || "",
+
+      subject:
+        note?.subject || "",
+
+      content:
+        note?.content || "",
     });
+
     setSelectedNote(note);
     setShowEditor(true);
+
   };
 
+
+  // ===================================================
+  // CLOSE EDITOR
+  // ===================================================
+
   const closeEditor = () => {
+
     setShowEditor(false);
     setSelectedNote(null);
     setError("");
+
   };
 
+
+  // ===================================================
+  // FORM CHANGE
+  // ===================================================
+
   const handleChange = (event) => {
-    const { name, value } = event.target;
+
+    const {
+      name,
+      value,
+    } = event.target;
 
     setForm((current) => ({
       ...current,
       [name]: value,
     }));
+
   };
 
+
+  // ===================================================
+  // SAVE NOTE
+  // ===================================================
+
   const saveNote = (event) => {
+
     event.preventDefault();
 
-    const title = form.title.trim();
-    const content = form.content.trim();
+    const title =
+      form.title.trim();
+
+    const content =
+      form.content.trim();
+
+    const subject =
+      form.subject.trim();
+
 
     if (!title) {
-      setError("Please enter a note title.");
+      setError(
+        "Please enter a note title."
+      );
       return;
     }
+
+
+    if (!subject) {
+      setError(
+        "Please select a current subject."
+      );
+      return;
+    }
+
+
+    // IMPORTANT:
+    // Do not allow an old/deleted subject to
+    // be saved into a new note.
+    const subjectStillExists =
+      currentSubjects.some(
+        (currentSubject) =>
+          currentSubject.toLowerCase() ===
+          subject.toLowerCase()
+      );
+
+
+    if (!subjectStillExists) {
+      setError(
+        "This subject is no longer available. Please select a current subject."
+      );
+      return;
+    }
+
 
     if (!content) {
-      setError("Please write some note content.");
+      setError(
+        "Please write some note content."
+      );
       return;
     }
 
-    const now = new Date().toISOString();
+
+    const now =
+      new Date().toISOString();
+
+
+    // =================================================
+    // UPDATE
+    // =================================================
 
     if (selectedNote) {
+
       setNotes((current) =>
-        current.map((note) =>
-          note.id === selectedNote.id
-            ? {
-                ...note,
-                title,
-                subject: form.subject,
-                content,
-                updatedAt: now,
-              }
-            : note
-        )
+        current.map((note) => {
+
+          if (
+            note.id !==
+            selectedNote.id
+          ) {
+            return note;
+          }
+
+          return {
+            ...note,
+            title,
+            subject:
+              currentSubjects.find(
+                (currentSubject) =>
+                  currentSubject.toLowerCase() ===
+                  subject.toLowerCase()
+              ) || subject,
+            content,
+            updatedAt: now,
+          };
+
+        })
       );
-    } else {
+
+    }
+
+    // =================================================
+    // CREATE
+    // =================================================
+
+    else {
+
       setNotes((current) => [
+
         {
           id: createId(),
           title,
-          subject: form.subject,
+
+          subject:
+            currentSubjects.find(
+              (currentSubject) =>
+                currentSubject.toLowerCase() ===
+                subject.toLowerCase()
+            ) || subject,
+
           content,
+
           createdAt: now,
           updatedAt: now,
         },
+
         ...current,
+
       ]);
+
     }
+
 
     closeEditor();
+
   };
+
+
+  // ===================================================
+  // DELETE NOTE
+  // ===================================================
 
   const deleteNote = (note) => {
-    const confirmed = window.confirm(`Delete "${note.title}"?`);
 
-    if (!confirmed) return;
+    const confirmed =
+      window.confirm(
+        `Delete "${note.title}"?`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
 
     setNotes((current) =>
-      current.filter((item) => item.id !== note.id)
+      current.filter(
+        (item) =>
+          item.id !== note.id
+      )
     );
 
-    if (selectedNote?.id === note.id) {
+
+    if (
+      selectedNote?.id ===
+      note.id
+    ) {
       closeEditor();
     }
+
   };
+
+
+  // ===================================================
+  // FORMAT DATE
+  // ===================================================
 
   const formatDate = (value) => {
-    if (!value) return "";
 
-    return new Date(value).toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
+    if (!value) {
+      return "";
+    }
+
+    const date =
+      new Date(value);
+
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
+      return "";
+    }
+
+    return date.toLocaleDateString(
+      "en-IN",
+      {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }
+    );
+
   };
 
-  return (
-    <main className="notes-page">
-      <div className="notes-container">
-        <div className="notes-header">
-          <div>
-            <p className="notes-brand">📝 LEARNOVA NOTES</p>
 
-            <h1>Your Study Notes</h1>
+  // ===================================================
+  // UI
+  // ===================================================
+
+  return (
+
+    <main className="notes-page">
+
+      <div className="notes-container">
+
+
+        {/* =================================================
+           HEADER
+           ================================================= */}
+
+        <div className="notes-header">
+
+          <div>
+
+            <p className="notes-brand">
+              📝 LEARNOVA NOTES
+            </p>
+
+            <h1>
+              Your Study Notes
+            </h1>
 
             <p className="notes-subtitle">
-              Create, organize and revise your notes in one place.
+              Create, organize and revise
+              your notes in one place.
             </p>
+
           </div>
+
 
           <button
             type="button"
             className="new-note-btn"
             onClick={openCreate}
+            disabled={
+              currentSubjects.length === 0
+            }
           >
             + New Note
           </button>
+
         </div>
 
+
+        {/* =================================================
+           STATS
+           ================================================= */}
+
         <section className="notes-stats">
-          <div className="note-stat-card">
-            <div className="note-stat-icon">📚</div>
-            <div className="note-stat-label">Total Notes</div>
-            <strong>{notes.length}</strong>
-          </div>
 
           <div className="note-stat-card">
-            <div className="note-stat-icon">🐍</div>
-            <div className="note-stat-label">Python Notes</div>
+
+            <div className="note-stat-icon">
+              📚
+            </div>
+
+            <div className="note-stat-label">
+              Current Notes
+            </div>
+
             <strong>
-              {notes.filter((note) => note.subject === "Python").length}
+              {currentNotes.length}
             </strong>
+
           </div>
 
+
           <div className="note-stat-card">
-            <div className="note-stat-icon">🎯</div>
-            <div className="note-stat-label">Subjects Covered</div>
+
+            <div className="note-stat-icon">
+              🎯
+            </div>
+
+            <div className="note-stat-label">
+              Current Subjects
+            </div>
+
             <strong>
-              {new Set(notes.map((note) => note.subject).filter(Boolean)).size}
+              {currentSubjects.length}
             </strong>
+
           </div>
+
+
+          <div className="note-stat-card">
+
+            <div className="note-stat-icon">
+              🗂️
+            </div>
+
+            <div className="note-stat-label">
+              Subjects Covered
+            </div>
+
+            <strong>
+              {subjectCount}
+            </strong>
+
+          </div>
+
         </section>
 
+
+        {/* =================================================
+           SEARCH
+           ================================================= */}
+
         <section className="notes-search-card">
+
           <div className="notes-search-row">
+
             <input
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="🔎 Search notes..."
+              onChange={(event) =>
+                setSearch(
+                  event.target.value
+                )
+              }
+              placeholder="🔎 Search current notes..."
               aria-label="Search notes"
             />
 
+
             <select
               value={subjectFilter}
-              onChange={(event) => setSubjectFilter(event.target.value)}
-              aria-label="Filter notes by subject"
+              onChange={(event) =>
+                setSubjectFilter(
+                  event.target.value
+                )
+              }
+              aria-label="Filter notes by current subject"
             >
-              {SUBJECTS.map((subject) => (
-                <option key={subject} value={subject}>
-                  {subject === "All" ? "All Subjects" : subject}
-                </option>
-              ))}
+
+              <option value="All">
+                All Current Subjects
+              </option>
+
+
+              {currentSubjects.map(
+                (subject) => (
+
+                  <option
+                    key={subject}
+                    value={subject}
+                  >
+                    {subject}
+                  </option>
+
+                )
+              )}
+
             </select>
+
           </div>
+
         </section>
 
-        {error && <div className="notes-error">{error}</div>}
 
-        {filteredNotes.length === 0 ? (
+        {/* =================================================
+           ERROR
+           ================================================= */}
+
+        {error && (
+          <div className="notes-error">
+            {error}
+          </div>
+        )}
+
+
+        {/* =================================================
+           NO CURRENT SUBJECTS
+           ================================================= */}
+
+        {currentSubjects.length === 0 ? (
+
           <section className="empty-notes">
-            <div className="empty-notes-icon">📝</div>
+
+            <div className="empty-notes-icon">
+              📚
+            </div>
 
             <h2>
-              {notes.length === 0 ? "No notes yet" : "No matching notes"}
+              No current subjects
             </h2>
 
             <p>
-              {notes.length === 0
-                ? "Create your first study note and start building your knowledge library."
-                : "Try another search term or subject filter."}
+              Add a subject from the Subjects
+              page first. Notes will use only
+              your current subjects.
             </p>
 
-            {notes.length === 0 && (
+          </section>
+
+        ) : filteredNotes.length === 0 ? (
+
+          <section className="empty-notes">
+
+            <div className="empty-notes-icon">
+              📝
+            </div>
+
+            <h2>
+              {currentNotes.length === 0
+                ? "No notes for current subjects"
+                : "No matching notes"}
+            </h2>
+
+            <p>
+              {currentNotes.length === 0
+                ? "Create a note using one of your current subjects."
+                : "Try another search term or current subject filter."}
+            </p>
+
+
+            {currentSubjects.length > 0 && (
               <button
                 type="button"
                 className="create-first-note-btn"
                 onClick={openCreate}
               >
-                Create First Note
+                Create Note
               </button>
             )}
+
           </section>
+
         ) : (
+
           <section className="notes-grid">
-            {filteredNotes.map((note) => (
-              <article className="note-card" key={note.id}>
-                <div className="note-card-top">
-                  <span className="note-subject">{note.subject}</span>
 
-                  <span className="note-date">
-                    {formatDate(note.updatedAt || note.createdAt)}
-                  </span>
-                </div>
+            {filteredNotes.map(
+              (note) => (
 
-                <h3>{note.title}</h3>
+                <article
+                  className="note-card"
+                  key={note.id}
+                >
 
-                <p className="note-content-preview">
-                  {note.content.length > 160
-                    ? `${note.content.slice(0, 160)}...`
-                    : note.content}
-                </p>
+                  <div className="note-card-top">
 
-                <div className="note-card-actions">
-                  <button
-                    type="button"
-                    className="note-edit-btn"
-                    onClick={() => openEdit(note)}
-                  >
-                    Edit
-                  </button>
+                    <span className="note-subject">
+                      {note.subject}
+                    </span>
 
-                  <button
-                    type="button"
-                    className="note-delete-btn"
-                    onClick={() => deleteNote(note)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </article>
-            ))}
+                    <span className="note-date">
+                      {formatDate(
+                        note.updatedAt ||
+                          note.createdAt
+                      )}
+                    </span>
+
+                  </div>
+
+
+                  <h3>
+                    {note.title}
+                  </h3>
+
+
+                  <p className="note-content-preview">
+                    {String(
+                      note.content || ""
+                    ).length > 160
+                      ? `${String(
+                          note.content || ""
+                        ).slice(0, 160)}...`
+                      : note.content}
+                  </p>
+
+
+                  <div className="note-card-actions">
+
+                    <button
+                      type="button"
+                      className="note-edit-btn"
+                      onClick={() =>
+                        openEdit(note)
+                      }
+                    >
+                      Edit
+                    </button>
+
+
+                    <button
+                      type="button"
+                      className="note-delete-btn"
+                      onClick={() =>
+                        deleteNote(note)
+                      }
+                    >
+                      Delete
+                    </button>
+
+                  </div>
+
+                </article>
+
+              )
+            )}
+
           </section>
+
         )}
+
       </div>
 
+
+      {/* ===================================================
+         EDITOR MODAL
+         =================================================== */}
+
       {showEditor && (
-        <div className="notes-modal-overlay" onClick={closeEditor}>
+
+        <div
+          className="notes-modal-overlay"
+          onClick={closeEditor}
+        >
+
           <form
             className="notes-editor-modal"
             onSubmit={saveNote}
-            onClick={(event) => event.stopPropagation()}
+            onClick={(event) =>
+              event.stopPropagation()
+            }
           >
+
+
             <div className="notes-modal-header">
+
               <div>
+
                 <h2>
-                  {selectedNote ? "Edit Note" : "Create New Note"}
+                  {selectedNote
+                    ? "Edit Note"
+                    : "Create New Note"}
                 </h2>
 
                 <p>
-                  Keep your important study concepts organized.
+                  Keep your important study
+                  concepts organized.
                 </p>
+
               </div>
+
 
               <button
                 type="button"
@@ -342,9 +1156,14 @@ function Notes() {
               >
                 ×
               </button>
+
             </div>
 
-            <label htmlFor="note-title">Title</label>
+
+            <label htmlFor="note-title">
+              Title
+            </label>
+
             <input
               id="note-title"
               name="title"
@@ -354,21 +1173,50 @@ function Notes() {
               autoFocus
             />
 
-            <label htmlFor="note-subject">Subject</label>
+
+            <label htmlFor="note-subject">
+              Current Subject
+            </label>
+
             <select
               id="note-subject"
               name="subject"
               value={form.subject}
               onChange={handleChange}
+              required
             >
-              {SUBJECTS.filter((item) => item !== "All").map((subject) => (
-                <option key={subject} value={subject}>
-                  {subject}
+
+              {currentSubjects.length ===
+              0 ? (
+
+                <option value="">
+                  No subjects available
                 </option>
-              ))}
+
+              ) : (
+
+                currentSubjects.map(
+                  (subject) => (
+
+                    <option
+                      key={subject}
+                      value={subject}
+                    >
+                      {subject}
+                    </option>
+
+                  )
+                )
+
+              )}
+
             </select>
 
-            <label htmlFor="note-content">Note Content</label>
+
+            <label htmlFor="note-content">
+              Note Content
+            </label>
+
             <textarea
               id="note-content"
               name="content"
@@ -378,9 +1226,16 @@ function Notes() {
               rows={10}
             />
 
-            {error && <div className="notes-form-error">{error}</div>}
+
+            {error && (
+              <div className="notes-form-error">
+                {error}
+              </div>
+            )}
+
 
             <div className="notes-modal-actions">
+
               <button
                 type="button"
                 className="notes-cancel-btn"
@@ -389,22 +1244,40 @@ function Notes() {
                 Cancel
               </button>
 
-              <button type="submit" className="notes-save-btn">
-                {selectedNote ? "Update Note" : "Save Note"}
+
+              <button
+                type="submit"
+                className="notes-save-btn"
+                disabled={
+                  currentSubjects.length === 0
+                }
+              >
+                {selectedNote
+                  ? "Update Note"
+                  : "Save Note"}
               </button>
+
             </div>
+
           </form>
+
         </div>
+
       )}
 
+
+      {/* ===================================================
+         STYLES
+         =================================================== */}
+
       <style>{`
+
         .notes-page {
           min-height: 100vh;
           box-sizing: border-box;
           padding: 36px 44px 70px;
           background: #f7f8fc;
           color: #13213f;
-          transition: background .25s ease, color .25s ease;
         }
 
         .notes-container {
@@ -457,11 +1330,18 @@ function Notes() {
           transition: .2s ease;
         }
 
-        .new-note-btn:hover,
+        .new-note-btn:hover:not(:disabled),
         .create-first-note-btn:hover,
-        .notes-save-btn:hover {
+        .notes-save-btn:hover:not(:disabled) {
           transform: translateY(-1px);
           background: #5b4ae8;
+        }
+
+        .new-note-btn:disabled,
+        .notes-save-btn:disabled {
+          opacity: .55;
+          cursor: not-allowed;
+          box-shadow: none;
         }
 
         .notes-stats {
@@ -478,8 +1358,6 @@ function Notes() {
           background: #fff;
           border: 1px solid #e8e7f3;
           box-shadow: 0 8px 25px rgba(31, 41, 55, .04);
-          transition: background .25s ease, border-color .25s ease,
-            color .25s ease, box-shadow .25s ease;
         }
 
         .note-stat-card {
@@ -529,8 +1407,7 @@ function Notes() {
           border-radius: 10px;
           background: #fff;
           color: #13213f;
-          transition: background .2s ease, color .2s ease,
-            border-color .2s ease, box-shadow .2s ease;
+          transition: .2s ease;
         }
 
         .notes-search-row input {
@@ -540,7 +1417,7 @@ function Notes() {
         }
 
         .notes-search-row select {
-          min-width: 160px;
+          min-width: 210px;
           min-height: 48px;
           padding: 12px 15px;
         }
@@ -597,6 +1474,7 @@ function Notes() {
         .note-card {
           padding: 20px;
           border-radius: 18px;
+          transition: .2s ease;
         }
 
         .note-card:hover {
@@ -796,7 +1674,9 @@ function Notes() {
             padding: 20px;
           }
         }
+
       `}</style>
+
     </main>
   );
 }

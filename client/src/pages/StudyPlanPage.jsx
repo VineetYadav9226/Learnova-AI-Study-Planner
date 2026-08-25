@@ -12,19 +12,68 @@ import {
 } from "../services/taskService";
 
 
+
+
 // =====================================================
-// SUBJECTS
+// CURRENT USER STORAGE HELPERS
 // =====================================================
 
-const SUBJECTS = [
-  "Python",
-  "AI",
-  "SPM",
-  "DBMS",
-  "DSA",
-  "OS",
-];
+const getCurrentUser = () => {
+  const possibleKeys = [
+    "user",
+    "currentUser",
+    "learnova_user",
+    "authUser",
+    "loggedInUser",
+    "userData",
+  ];
 
+  for (const key of possibleKeys) {
+    try {
+      const value = localStorage.getItem(key);
+
+      if (!value) {
+        continue;
+      }
+
+      const parsed = JSON.parse(value);
+
+      if (parsed && typeof parsed === "object") {
+        return parsed;
+      }
+    } catch {
+      // Ignore invalid JSON.
+    }
+  }
+
+  return null;
+};
+
+const getUserIdentifier = () => {
+  const user = getCurrentUser();
+
+  if (!user) {
+    return null;
+  }
+
+  const identifier =
+    user._id ||
+    user.id ||
+    user.userId ||
+    user.email;
+
+  return identifier ? String(identifier) : null;
+};
+
+const getUserStorageKey = (baseKey) => {
+  const userId = getUserIdentifier();
+
+  if (!userId) {
+    return null;
+  }
+
+  return `${baseKey}_${userId}`;
+};
 
 // =====================================================
 // DATE HELPERS
@@ -98,7 +147,7 @@ function StudyPlanPage() {
 
   const [form, setForm] = useState({
     title: "",
-    subject: "Python",
+    subject: "",
     time: "",
     date: "",
   });
@@ -162,22 +211,143 @@ function StudyPlanPage() {
 
 
   // ===================================================
-  // SUBJECT OPTIONS
+  // CURRENT SUBJECT OPTIONS
+  // ===================================================
+  //
+  // IMPORTANT:
+  // Only subjects currently stored by Subjects.jsx are
+  // shown here. We NEVER merge subjects from old tasks.
   // ===================================================
 
-  const subjectOptions = useMemo(() => {
-    const fromTasks = tasks
-      .map((task) => task.subject)
-      .filter(Boolean);
+  const [, setSubjectsVersion] =
+    useState(0);
 
-    return [
-      ...new Set([
-        ...SUBJECTS,
-        ...fromTasks,
-      ]),
-    ];
-  }, [tasks]);
+  useEffect(() => {
+    const syncSubjects = () => {
+      setSubjectsVersion(
+        (version) => version + 1
+      );
+    };
 
+    window.addEventListener(
+      "learnova:subjects-updated",
+      syncSubjects
+    );
+
+    window.addEventListener(
+      "storage",
+      syncSubjects
+    );
+
+    window.addEventListener(
+      "learnova:user-updated",
+      syncSubjects
+    );
+
+    window.addEventListener(
+      "learnova:auth-changed",
+      syncSubjects
+    );
+
+    return () => {
+      window.removeEventListener(
+        "learnova:subjects-updated",
+        syncSubjects
+      );
+
+      window.removeEventListener(
+        "storage",
+        syncSubjects
+      );
+
+      window.removeEventListener(
+        "learnova:user-updated",
+        syncSubjects
+      );
+
+      window.removeEventListener(
+        "learnova:auth-changed",
+        syncSubjects
+      );
+    };
+  }, []);
+
+  const getCurrentSubjectOptions = () => {
+    const names = [];
+
+    try {
+      const storageKey =
+        getUserStorageKey(
+          "learnova_subjects"
+        );
+
+      if (!storageKey) {
+        return names.filter(
+          (name, index, array) =>
+            index ===
+            array.findIndex(
+              (item) =>
+                item.toLowerCase() ===
+                name.toLowerCase()
+            )
+        );
+      }
+
+      const saved =
+        localStorage.getItem(storageKey);
+
+      if (saved) {
+        const parsed = JSON.parse(saved);
+
+        if (Array.isArray(parsed)) {
+          parsed.forEach((subject) => {
+            const name =
+              String(
+                subject?.name || ""
+              ).trim();
+
+            if (name) {
+              names.push(name);
+            }
+          });
+        }
+      }
+    } catch (error) {
+      console.error(
+        "Unable to read current subjects:",
+        error
+      );
+    }
+
+    return names.filter(
+      (name, index, array) =>
+        index ===
+        array.findIndex(
+          (item) =>
+            item.toLowerCase() ===
+            name.toLowerCase()
+        )
+    );
+  };
+
+  // Read the latest subjects on every render. The event listener
+  // above triggers a render when Subjects.jsx changes the list.
+  const currentSubjectOptions =
+    getCurrentSubjectOptions();
+
+  // Open the create-task modal with the first CURRENT subject
+  // selected automatically.
+  const openCreateModal = () => {
+    setForm({
+      title: "",
+      subject: currentSubjectOptions[0] || "",
+      time: "",
+      date: "",
+    });
+
+    setError("");
+    setShowCreate(true);
+  };
 
   // ===================================================
   // STATISTICS
@@ -414,6 +584,14 @@ function StudyPlanPage() {
       return;
     }
 
+    if (!form.subject) {
+      setError(
+        "Please create/select a subject first."
+      );
+
+      return;
+    }
+
     try {
 
       setSaving(true);
@@ -446,7 +624,7 @@ function StudyPlanPage() {
 
       setForm({
         title: "",
-        subject: "Python",
+        subject: currentSubjectOptions[0] || "",
         time: "",
         date: "",
       });
@@ -1302,9 +1480,7 @@ function StudyPlanPage() {
           <button
             type="button"
             className="sp-primary-btn"
-            onClick={() =>
-              setShowCreate(true)
-            }
+            onClick={openCreateModal}
           >
             <span>＋</span>
             Create Study Task
@@ -1513,7 +1689,7 @@ function StudyPlanPage() {
               All Subjects
             </option>
 
-            {subjectOptions.map(
+            {currentSubjectOptions.map(
               (subject) => (
                 <option
                   key={subject}
@@ -1615,9 +1791,7 @@ function StudyPlanPage() {
                 <button
                   type="button"
                   className="sp-secondary-btn"
-                  onClick={() =>
-                    setShowCreate(true)
-                  }
+                  onClick={openCreateModal}
                 >
                   + Create Task
                 </button>
@@ -1829,24 +2003,38 @@ function StudyPlanPage() {
                 onChange={(event) =>
                   setForm((current) => ({
                     ...current,
-                    subject:
-                      event.target.value,
+                    subject: event.target.value,
                   }))
                 }
+                disabled={currentSubjectOptions.length === 0}
               >
-
-                {subjectOptions.map(
-                  (subject) => (
+                {currentSubjectOptions.length === 0 ? (
+                  <option value="">
+                    No subjects available
+                  </option>
+                ) : (
+                  currentSubjectOptions.map((subject) => (
                     <option
                       key={subject}
                       value={subject}
                     >
                       {subject}
                     </option>
-                  )
+                  ))
                 )}
-
               </select>
+
+              {currentSubjectOptions.length === 0 && (
+                <p
+                  style={{
+                    margin: "7px 0 0",
+                    color: "#be123c",
+                    fontSize: "11px",
+                  }}
+                >
+                  Add a subject from the Subjects page first.
+                </p>
+              )}
 
             </div>
 
@@ -1904,11 +2092,16 @@ function StudyPlanPage() {
             <button
               type="submit"
               className="sp-modal-submit"
-              disabled={saving}
+              disabled={
+                saving ||
+                currentSubjectOptions.length === 0
+              }
             >
               {saving
                 ? "Saving..."
-                : "Create Study Task"}
+                : currentSubjectOptions.length === 0
+                  ? "Add a Subject First"
+                  : "Create Study Task"}
             </button>
 
           </form>
